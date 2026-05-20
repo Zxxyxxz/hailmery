@@ -1,0 +1,19 @@
+node_modules/
+.wrangler/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+out/
+drizzle/meta/_journal.json.bak
+.idea/
+.vscode/
+
+# V0 artifacts not for git
+screenshot-apire.js
+apire-screenshots/
+
+# Generated drafts (CLI output)
+/out/**

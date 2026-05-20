@@ -1,0 +1,39 @@
+{
+  "name": "hailmery",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "AI marketing command center — V0 scaffold",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
+    "db:seed": "tsx --env-file=.env src/db/seed.ts",
+    "ingest": "tsx --env-file=.env src/cli/ingest.ts",
+    "gen": "tsx --env-file=.env src/cli/gen.ts",
+    "test:rls": "tsx --env-file=.env tests/rls.test.ts",
+    "test:wix": "tsx --env-file=.env tests/wix-blog-prototype.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.97.1",
+    "@neondatabase/serverless": "^0.10.4",
+    "drizzle-orm": "^0.36.4",
+    "gpt-tokenizer": "^2.7.0",
+    "hono": "^4.6.10",
+    "openai": "^4.73.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241112.0",
+    "@types/node": "^22.9.0",
+    "drizzle-kit": "^0.28.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.87.0"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  }
+}

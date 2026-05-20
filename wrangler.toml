@@ -1,0 +1,17 @@
+name = "hailmery"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Worker secrets (set via `wrangler secret put <NAME>`):
+#   DATABASE_URL
+#   OPENAI_API_KEY
+#   ANTHROPIC_API_KEY
+#   WIX_API_KEY (V0 prototype only)
+#   WIX_SITE_ID  (V0 prototype only)
+
+[observability]
+enabled = true
+
+[vars]
+ENVIRONMENT = "development"

@@ -1,0 +1,60 @@
+// Cloudflare Worker entry — Hono app for the V0 admin surface.
+//
+// V0 routes:
+//   GET  /                          — health + tenant list
+//   GET  /settings/brand-voice      — form (HTML) for the selected tenant
+//   POST /settings/brand-voice      — save brand_voice JSON
+//
+// All other surfaces (approval queue, calendar, analytics, connections) are V1+.
+
+import { Hono } from 'hono';
+import { html } from 'hono/html';
+import { makeDb } from './db/client.js';
+import { findTenantBySlug } from './lib/tenant.js';
+import { brandVoicePage, brandVoiceSave } from './routes/settings.js';
+
+type Env = {
+  DATABASE_URL: string;
+  OPENAI_API_KEY: string;
+  ANTHROPIC_API_KEY: string;
+  ENVIRONMENT?: string;
+};
+
+const app = new Hono<{ Bindings: Env }>();
+
+app.get('/', async (c) => {
+  return c.html(html`<!doctype html>
+<html>
+  <head><meta charset="utf-8"><title>hailmery</title></head>
+  <body style="font-family: system-ui; max-width: 720px; margin: 4em auto; padding: 0 1em">
+    <h1>hailmery — V0</h1>
+    <p>AI marketing command center. V0 ships the multi-tenant scaffold and the content-quality proof.</p>
+    <h2>Tools</h2>
+    <ul>
+      <li><a href="/settings/brand-voice?tenant=apire">Edit APIRE brand voice</a></li>
+      <li><a href="/settings/brand-voice?tenant=osm">Edit OSM brand voice</a></li>
+    </ul>
+    <p>Use the CLI for content generation: <code>pnpm gen blog --tenant apire "topic"</code></p>
+  </body>
+</html>`);
+});
+
+app.get('/settings/brand-voice', async (c) => {
+  const db = makeDb(c.env.DATABASE_URL);
+  const slug = c.req.query('tenant');
+  if (!slug) return c.text('Missing ?tenant', 400);
+  const tenant = await findTenantBySlug(db, slug);
+  if (!tenant) return c.text(`No tenant '${slug}'`, 404);
+  return brandVoicePage(c, db, tenant);
+});
+
+app.post('/settings/brand-voice', async (c) => {
+  const db = makeDb(c.env.DATABASE_URL);
+  const slug = c.req.query('tenant');
+  if (!slug) return c.text('Missing ?tenant', 400);
+  const tenant = await findTenantBySlug(db, slug);
+  if (!tenant) return c.text(`No tenant '${slug}'`, 404);
+  return brandVoiceSave(c, db, tenant);
+});
+
+export default app;
