@@ -1,0 +1,63 @@
+{
+  "tenant": "apire",
+  "topic": "GDPR compliance for companies using OpenAI APIs",
+  "sources": [
+    "_entities.md",
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "_entities.md",
+    "deployment-and-integration.md"
+  ],
+  "usage": {
+    "input_tokens": 5133,
+    "output_tokens": 1935,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "APIRE",
+        "quote": "Where APIRE's architecture addresses this directly",
+        "reasoning": "The draft mentions 'APIRE' by name in the section heading but does not introduce APIRE as a product or vendor until deep into the section. The earlier body text discusses a generic 'middleware layer' and 'inspection layer' without naming APIRE, creating ambiguity about whether APIRE is the subject or just one example. The CORPUS requires that specific product names appear in context with clear identification of what they are."
+      },
+      {
+        "term": "950 pre-configured detection rules",
+        "quote": "The Data Leakage Fortress component applies more than 950 pre-configured detection rules against prompt content",
+        "reasoning": "Accurate per CORPUS (Layer 4 DLP has '950+ pre-configured rules'). No flag."
+      },
+      {
+        "term": "single URL change",
+        "quote": "the platform supports OpenAI integration through a single URL change",
+        "reasoning": "Supported by CORPUS: 'zero-touch / zero code change: a single endpoint URL swap (e.g., `api.openai.com` → `app.apire.io`)'. Accurate."
+      },
+      {
+        "term": "160,000 EU organisations",
+        "quote": "the directive's scope covers more than 160,000 EU organisations",
+        "reasoning": "Accurate per CORPUS: 'NIS2 Directive — out-of-the-box compliance for 160,000+ affected EU entities'. This is a cited industry stat."
+      },
+      {
+        "term": "€10 million or 2% of global turnover",
+        "quote": "fines up to €10 million or 2% of global turnover",
+        "reasoning": "Accurate per CORPUS NIS2 penalties. Supported."
+      },
+      {
+        "term": "masking before transmission",
+        "quote": "Inline masking replaces sensitive content before the prompt reaches the OpenAI endpoint.",
+        "reasoning": "Supported by CORPUS: Layer 4 includes 'inline masking & anonymization'. The draft's phrasing is accurate to the product capability."
+      },
+      {
+        "term": "Zero-Retention Architecture",
+        "quote": "APIRE's Zero-Retention Architecture is built on a single operational principle: process everything in volatile memory, keep nothing.",
+        "reasoning": "Accurate per CORPUS definition. ZRA is canonical and well-documented."
+      }
+    ],
+    "score": 0.92,
+    "notes": "Draft is substantively accurate and well-aligned with CORPUS. Minor ambiguity in product introduction (APIRE not named until deep into section) but no factual errors. All technical claims supported. Compliance framings accurate.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:36:43.230Z"
+  }
+}

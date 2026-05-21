@@ -1,0 +1,23 @@
+{
+  "tenant": "apire",
+  "topic": "Prompt injection attacks — what they are and how to stop them",
+  "sources": [
+    "threat-coverage.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "five-layer-architecture.md",
+    "threat-coverage.md",
+    "brand-voice.md",
+    "deployment-and-integration.md"
+  ],
+  "usage": {
+    "input_tokens": 4166,
+    "output_tokens": 554,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "pack": {
+    "linkedin": "OWASP rates prompt injection the #1 AI security risk. That ranking exists for a reason.\n\nPrompt injection is the technique of crafting inputs that override an AI system's instructions or safety rules — forcing the model to act on the attacker's agenda rather than yours. It doesn't require a vulnerability in your infrastructure. It requires only that your AI application trusts user input too much.\n\nThe attack surface is wider than most security teams expect. Direct injection targets the prompt itself. Indirect injection arrives through retrieved documents, tool outputs, or RAG context — data sources your model treats as trusted. Either path can lead to data exfiltration, business logic manipulation, or model inversion attacks that reconstruct sensitive behavior.\n\nThe numbers reflect the urgency: AI-specific attacks — prompt injection and jailbreak volume combined — rose 67% year-over-year. 86% of companies deploying AI experienced an AI security incident in the past 12 months. 97% of those breaches involved systems lacking proper access controls.\n\nEffective defense operates at the semantic layer, not the keyword layer. Detecting the phrase 'ignore previous instructions' is trivial. Detecting the same intent expressed through ROT13 encoding, bidirectional text override, combining character stacking, or multi-stage context manipulation is a different problem entirely — one that requires understanding what a prompt is attempting, not just what it literally says.\n\nMulti-vector correlation matters here. When a single request triggers prompt injection alongside, say, a context attack and a social engineering pattern, the composite risk is not additive — it is amplified. That coordination is exactly what targeted campaigns look like.\n\nFor EU enterprises, Article 15 of the AI Act frames this directly: accuracy, robustness, and cybersecurity are legal requirements for high-risk AI systems, not aspirational properties.\n\nThe question worth asking your team: can your current AI security controls distinguish intent from syntax?\n\n#AIActCompliance #CyberSecurity #NIS2",
+    "x": "67% YoY rise in prompt injection & jailbreak attacks. OWASP ranks it the #1 AI risk. Keyword filters don't catch ROT13, bidirectional text override, or context attacks. Intent detection does. #AIAct #CyberSecurity",
+    "hook": "Prompt injection doesn't need a CVE. It needs your AI to trust the wrong input."
+  }
+}

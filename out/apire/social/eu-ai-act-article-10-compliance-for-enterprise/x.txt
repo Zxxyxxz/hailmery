@@ -1,0 +1,1 @@
+EU AI Act Art. 10 isn't a policy checkbox — it's an architecture requirement. Inline masking before the model sees the prompt, 950+ DLP rules, zero retention. Governance built in, not bolted on. #EUAIAct #DataGovernance

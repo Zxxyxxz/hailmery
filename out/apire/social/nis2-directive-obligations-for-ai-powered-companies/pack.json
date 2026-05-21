@@ -1,0 +1,23 @@
+{
+  "tenant": "apire",
+  "topic": "NIS2 directive obligations for AI-powered companies",
+  "sources": [
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "_entities.md",
+    "_entities.md",
+    "_entities.md"
+  ],
+  "usage": {
+    "input_tokens": 3762,
+    "output_tokens": 511,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "pack": {
+    "linkedin": "160,000+ EU entities are now subject to NIS2 obligations — and most are discovering that their existing security stack has a blind spot: AI traffic.\n\nNIS2 requires active incident prevention, documented risk management, and audit-ready reporting. Those requirements were written for networked systems broadly. They apply just as precisely to every prompt your workforce sends to an LLM, every response that returns sensitive data, and every shadow AI tool your teams adopted without a procurement process.\n\nHere is the gap traditional DLP does not close: it was not designed for conversational AI traffic. It cannot inspect prompt-level data flows, enforce inline masking before a model receives input, or generate the kind of traceable decision audit that survives regulatory scrutiny. NIS2 incident reporting requirements for AI systems demand exactly that kind of evidence.\n\nThe compliance cost is not abstract. Non-compliance carries fines up to €10 million or 2% of global turnover — whichever is higher. Meanwhile, 40% of IT spending in Europe already goes toward compliance-related costs. Adding a purpose-built AI security layer is not a budget expansion; it is a reallocation away from exposure.\n\nFor security architects building the controls stack today, the practical question is whether your AI gateway produces audit-ready dashboards, enforces 950+ DLP rules inline, and maps explicitly to NIS2 incident detection and reporting obligations — or whether you are retrofitting a tool that was never designed for this traffic type.\n\nNIS2 does not carve out an exception for AI-mediated data flows. Your controls stack should not either.\n\nIf you are scoping NIS2 compliance for an environment with active LLM deployments, what is the single control gap your current tooling cannot close?\n\n#NIS2 #AIGovernance #CyberSecurityEU",
+    "x": "160,000+ EU entities face NIS2 obligations. Traditional DLP wasn't built for AI traffic — no prompt inspection, no inline masking, no audit trail. The gap is real. #NIS2 #AISecuirty",
+    "hook": "Your DLP stack was never designed for AI traffic. NIS2 doesn't care."
+  }
+}

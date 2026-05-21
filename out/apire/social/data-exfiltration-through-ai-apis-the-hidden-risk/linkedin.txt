@@ -1,0 +1,15 @@
+8.5% of prompts submitted to enterprise AI tools contain sensitive information — PII, credentials, internal data. That number is not a projection. It reflects what is already moving through AI APIs today, largely unmonitored.
+
+The threat is not hypothetical. Data exfiltration through AI interfaces is one of five core attack categories APIRE's threat model is built around — alongside prompt injection, jailbreaking, social engineering, and model inversion. What makes it operationally distinct is the attack surface: an employee doesn't need to copy a file to an external drive. A carefully crafted prompt can cause a model to surface data it has seen in context, reconstruct fragments of retrieval-augmented inputs, or be manipulated into echoing sensitive content back through an apparently legitimate interaction.
+
+Classic DLP was designed for files, endpoints, and network egress. It was not designed to inspect the semantic intent of a natural-language request traversing an LLM API. These are categorically different problems requiring different controls.
+
+Under NIS2, the obligation to implement appropriate technical measures to manage AI-related risk is not optional for the 160,000+ entities in scope. The EU AI Act adds a further governance layer for high-risk deployments. Neither framework accepts 'we didn't know the channel existed' as a defensible position.
+
+The infrastructure to address this exists. A purpose-built AI security layer — inspecting both request and response, applying 950+ DLP rules inline, masking before data reaches the model or leaves the pipeline — is deployable today without code changes to existing integrations.
+
+89% of enterprises currently lack that layer. The gap is measurable. The regulatory exposure is real.
+
+What is your organisation's current visibility into what leaves through its AI API calls?
+
+#NIS2 #AIActEU #CyberSecurity

@@ -1,0 +1,1 @@
+Your OpenAI API proxy is storing PII you haven't audited. Zero-retention architecture eliminates the stored data GDPR regulates — at the middleware layer you control. #GDPR #AIGovernance

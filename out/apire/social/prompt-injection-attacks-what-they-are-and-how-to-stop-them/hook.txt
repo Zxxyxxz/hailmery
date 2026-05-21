@@ -1,0 +1,1 @@
+Prompt injection doesn't need a CVE. It needs your AI to trust the wrong input.

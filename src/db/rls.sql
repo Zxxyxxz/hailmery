@@ -9,9 +9,18 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_uuid()
 
 -- 2. HNSW index for fast cosine ANN on document_chunks.embedding.
 --    Cosine is what text-embedding-3-small ships normalized for.
-CREATE INDEX IF NOT EXISTS document_chunks_embedding_hnsw
-  ON marketing.document_chunks
-  USING hnsw (embedding vector_cosine_ops);
+--    Only run if the table actually exists (lets us call this migration
+--    before AND after drizzle-kit push).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_tables WHERE schemaname = 'marketing' AND tablename = 'document_chunks'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS document_chunks_embedding_hnsw
+      ON marketing.document_chunks
+      USING hnsw (embedding vector_cosine_ops);
+  END IF;
+END $$;
 
 -- 3. Enable AND FORCE RLS on every marketing.* table.
 --    FORCE makes RLS apply even to the table owner, so seed/CLI scripts must
@@ -46,9 +55,10 @@ BEGIN
 END $$;
 
 -- 5. Uniform tenant-isolation policy on every table.
---    The expression `current_setting('app.tenant_id', true)::uuid = tenant_id`
---    matches the PLAN.md contract: the Worker/CLI sets `app.tenant_id` at
---    the start of every request, and queries are filtered transparently.
+--    Default mode: `current_setting('app.tenant_id', true)::uuid = tenant_id`
+--    Bypass mode: `current_setting('app.rls_bypass', true) = 'true'` lets the
+--    seed and migration scripts insert across tenants without bypassing RLS
+--    via role attribute (which would defeat the policy entirely).
 --
 --    The `true` second arg to current_setting returns NULL if unset, which
 --    will fail the equality and return zero rows — fail-closed by design.
@@ -63,8 +73,23 @@ BEGIN
   LOOP
     EXECUTE format($p$
       CREATE POLICY tenant_isolation ON marketing.%I
-        USING (current_setting('app.tenant_id', true)::uuid = tenant_id)
-        WITH CHECK (current_setting('app.tenant_id', true)::uuid = tenant_id)
+        USING (
+          NULLIF(current_setting('app.tenant_id', true), '')::uuid = tenant_id
+          OR current_setting('app.rls_bypass', true) = 'true'
+        )
+        WITH CHECK (
+          NULLIF(current_setting('app.tenant_id', true), '')::uuid = tenant_id
+          OR current_setting('app.rls_bypass', true) = 'true'
+        )
     $p$, tbl);
   END LOOP;
 END $$;
+
+-- 6. Note on role attributes:
+--    Neon's default `neondb_owner` role ships with BYPASSRLS = true and
+--    Neon does not permit altering its attributes. The application MUST
+--    connect as a non-bypass role (e.g. `hailmery_app`, created by the RLS
+--    test) for tenant_isolation to actually apply. The seed and migration
+--    scripts continue to run as the owner using the `app.rls_bypass = true`
+--    escape hatch above. The RLS verification test (`pnpm test:rls`)
+--    creates the non-bypass role and exercises the policy from it.

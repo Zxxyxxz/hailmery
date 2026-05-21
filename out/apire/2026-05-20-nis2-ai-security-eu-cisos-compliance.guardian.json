@@ -1,0 +1,53 @@
+{
+  "tenant": "apire",
+  "topic": "AI security for EU CISOs facing NIS2 compliance",
+  "sources": [
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "market-and-industry-data.md",
+    "_entities.md",
+    "personas.md",
+    "compliance-coverage.md",
+    "_entities.md",
+    "compliance-coverage.md"
+  ],
+  "usage": {
+    "input_tokens": 4800,
+    "output_tokens": 1809,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "67% year-over-year increase in AI-specific attacks",
+        "quote": "The 67% year-over-year increase in AI-specific attacks observed across enterprise deployments",
+        "reasoning": "Supported by CORPUS as '67% YoY increase in AI-specific attacks (prompt injection & jailbreak volume)' — verified claim, flagged as acceptable."
+      },
+      {
+        "term": "160,000+ EU entities affected by NIS2",
+        "quote": "The NIS2 Directive applies to more than 160,000 EU entities.",
+        "reasoning": "Supported by CORPUS as '160,000+ EU entities' in NIS2 scope — verified claim."
+      },
+      {
+        "term": "€10 million or 2% of global turnover NIS2 fines",
+        "quote": "fines up to €10 million or 2% of global annual turnover, whichever is higher",
+        "reasoning": "Supported by CORPUS as '€10 million or 2% of global turnover (whichever higher)' — verified claim."
+      },
+      {
+        "term": "68% of European businesses struggle with EU AI Act",
+        "quote": "68% of European businesses currently report difficulty understanding their EU AI Act obligations",
+        "reasoning": "Supported by CORPUS as '68% of European businesses struggle with EU AI Act responsibilities' — verified claim."
+      },
+      {
+        "term": "27+ AI-specific threats",
+        "quote": "The 67% year-over-year increase in AI-specific attacks observed across enterprise deployments is not a marketing statistic",
+        "reasoning": "No explicit mention of '27+ threats' in this draft, but CORPUS supports this as a key statistic. Draft does not cite it, so no flag needed."
+      }
+    ],
+    "score": 0.98,
+    "notes": "Draft is well-sourced and factually aligned with CORPUS. All numerical claims (NIS2 entity count, fine amounts, market statistics, threat growth rates, EU AI Act struggle percentage) are directly supported by verified CORPUS facts. No unsupported product claims, unverified customer references, or hallucinated statistics detected. Tone and framing align with brand voice guidelines (authoritative, compliance-focused, CISO-audience messaging).",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:33:04.656Z"
+  }
+}

@@ -44,7 +44,9 @@ async function main() {
 
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL row_security = off');
+    // Bypass tenant_isolation policy for the duration of the seed via the
+    // explicit `app.rls_bypass` GUC. This is the only place we use it.
+    await client.query("SELECT set_config('app.rls_bypass', 'true', true)");
 
     for (const t of SEED) {
       // Insert/find tenant

@@ -1,0 +1,15 @@
+When your company routes a prompt through OpenAI's API, GDPR exposure doesn't disappear — it shifts.
+
+The middleware layer between your users and the model is where most enterprises get this wrong. Logs accumulate. Caches persist. Prompt content — including PII your users typed — sits in infrastructure you may not have audited this quarter.
+
+The architectural answer is zero-retention processing: all inspection occurs in volatile memory, data exists only for the milliseconds required for analysis, and nothing is written to logs, caches, databases, or backups. When there is no stored personal data, the primary object of GDPR regulation is structurally eliminated. Breach notification requirements lose their trigger. Data residency questions about the middleware layer disappear.
+
+This is not a configuration choice — it is an architectural one. And the distinction matters under GDPR's accountability principle: you cannot demonstrate compliance through policy documents if your infrastructure contradicts them.
+
+One clarification worth stating plainly: zero-retention in the proxy layer does not resolve your obligations regarding the AI provider itself. OpenAI's own data handling still falls within your vendor risk scope. What it does eliminate is the exposure surface your team controls — the inspection and routing layer you own.
+
+For EU enterprises, the question is not whether to use generative AI. It is whether the infrastructure sitting between your data and that AI was built with GDPR as a design constraint, not a retrofit.
+
+What part of your current AI pipeline would fail a GDPR data-flow audit today?
+
+#GDPR #AIGovernance #NIS2

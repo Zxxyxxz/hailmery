@@ -1,0 +1,23 @@
+{
+  "tenant": "apire",
+  "topic": "AI gateway security vs traditional WAF",
+  "sources": [
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "deployment-and-integration.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "five-layer-architecture.md",
+    "competitive-landscape.md"
+  ],
+  "usage": {
+    "input_tokens": 4152,
+    "output_tokens": 488,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "pack": {
+    "linkedin": "89% of enterprises deploy AI without purpose-built security. Most are relying on WAFs and traditional API gateways that were architected before large language models existed.\n\nThe gap is architectural, not configurational.\n\nA WAF inspects HTTP structure — headers, payloads, known exploit signatures. It has no concept of prompt injection, jailbreaking, or model inversion. You cannot write a WAF rule that reliably catches a social engineering attack embedded in a natural-language request. The attack surface is semantic, not syntactic.\n\nAI-specific threats have grown 67% year-over-year in volume. The average cost of an AI-related data breach now stands at $4.2M — up 45% annually. These numbers reflect a threat category that traditional perimeter tools were never designed to address.\n\nThe correct response isn't patching a WAF with regex rules. It's an inspection pipeline built around the LLM threat model from the ground up: encoding normalization across 26+ attack vectors, semantic threat detection across prompt injection, jailbreaking, data exfiltration, and model inversion, plus a DLP layer that distinguishes between structured data leakage and generative AI data exposure — two fundamentally different problems.\n\nUnder NIS2 and the EU AI Act, the question of whether your AI traffic is governed is no longer optional. Regulators are asking for audit trails, policy enforcement records, and demonstrable controls on high-risk AI systems. A WAF access log does not satisfy that requirement.\n\nSecurity architects evaluating AI infrastructure should be asking one question their WAF vendor cannot answer: what happens when the attack is the prompt itself?\n\n#AISecurity #NIS2 #CyberSecurity",
+    "x": "A WAF has no concept of prompt injection. AI threats are semantic — not syntactic. 67% YoY growth in AI-specific attacks demands purpose-built defense, not repurposed perimeter tools. #AISecurtiy #NIS2",
+    "hook": "Your WAF cannot read a prompt. Neither can your attacker — until it works."
+  }
+}

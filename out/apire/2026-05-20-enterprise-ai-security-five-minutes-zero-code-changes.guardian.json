@@ -1,0 +1,38 @@
+{
+  "tenant": "apire",
+  "topic": "How APIRE protects AI in 5 minutes with no code changes",
+  "sources": [
+    "positioning-and-promise.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "product-suite-and-risk-surfaces.md",
+    "positioning-and-promise.md",
+    "five-layer-architecture.md",
+    "positioning-and-promise.md",
+    "positioning-and-promise.md",
+    "personas.md"
+  ],
+  "usage": {
+    "input_tokens": 5266,
+    "output_tokens": 1702,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "Layer 4 — Data Shield",
+        "quote": "Layer 4 — Data Shield handles PII and proprietary data through real-time detection and masking",
+        "reasoning": "Canonical name is 'Data Masking Fortress' or 'Data Leakage Fortress', not 'Data Shield'. The term 'Data Shield' does not appear in CORPUS as a layer name."
+      },
+      {
+        "term": "27+ AI-specific threats",
+        "quote": "This layer provides semantic defense against 27+ AI-specific threats — prompt injection, jailbreaks, model manipulation, adversarial inputs, indirect injection through retrieved documents in RAG pipelines.",
+        "reasoning": "27+ is the aggregate of all threat categories (14 content safety + 5 core + 8 advanced). Layer 2 specifically contains 5 core + 8 advanced = 13 AI-specific threats, not 27+. The phrasing conflates the total threat landscape with Layer 2's scope."
+      }
+    ],
+    "score": 0.98,
+    "notes": "Excellent positioning content with accurate architectural framing, ZRA explanation, and compliance context. Two minor nomenclature issues: one incorrect layer name and one threat-count framing that overstates Layer 2's specific coverage.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:39:33.770Z"
+  }
+}

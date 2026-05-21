@@ -1,0 +1,58 @@
+{
+  "tenant": "apire",
+  "topic": "AI gateway security vs traditional WAF",
+  "sources": [
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "deployment-and-integration.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "five-layer-architecture.md",
+    "competitive-landscape.md",
+    "five-layer-architecture.md",
+    "threat-coverage.md"
+  ],
+  "usage": {
+    "input_tokens": 5231,
+    "output_tokens": 1911,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "27+ AI-specific threat categories organised into two tiers",
+        "quote": "The APIRE corpus documents 27+ AI-specific threat categories organised into two tiers.",
+        "reasoning": "The corpus organizes threats into Layers, not 'two tiers'. Layer 1 has 14 Content Safety categories; Layer 2 has 5 Core + 8 Advanced AI threats (13 total). The aggregate is 27+, but the framing as 'two tiers' is not supported. Should reference the specific layer structure."
+      },
+      {
+        "term": "26+ encoding attack vectors through a 13-stage normalisation process",
+        "quote": "The APIRE pipeline addresses 26+ encoding attack vectors through a 13-stage normalisation process that handles up to three levels of nested encoding recursion.",
+        "reasoning": "The 13-stage normalization pipeline is correct per corpus. However, the 26+ encoding vectors are a subset of the 11-stage security pipeline (stages 2–3 specifically handle encoding attacks). The phrasing 'APIRE pipeline' is correct, but this should clarify that encoding normalization is stages 2–3 of the 11-stage pipeline, not a separate system."
+      },
+      {
+        "term": "traditional DLP inspects known file types",
+        "quote": "Its rule engine inspects known file types, looks for structured data patterns (credit card numbers, social security numbers), and enforces egress policies at the network or endpoint layer.",
+        "reasoning": "This is a generic description of traditional DLP, not a claim about APIRE. However, the draft's framing of DLP limitations is not directly contradicted by the corpus, which does not detail traditional DLP mechanics. The claim is general industry knowledge and acceptable in context."
+      },
+      {
+        "term": "150+ data types",
+        "quote": "purpose-built DLP for AI requires inline inspection of request *and* response payloads, masking before data reaches the model rather than only alerting after egress, and granular classification across 150+ data types",
+        "reasoning": "Corpus confirms '950+ pre-configured DLP rules covering 150+ data types.' Claim is accurate and supported."
+      },
+      {
+        "term": "67% year-over-year increase in AI-specific attack volume",
+        "quote": "particularly given the 67% year-over-year increase in AI-specific attack volume documented in the corpus",
+        "reasoning": "Corpus confirms '67% YoY increase in AI-specific attacks (prompt injection & jailbreak volume).' Claim is accurate and supported."
+      },
+      {
+        "term": "Article 52 transparency requirements",
+        "quote": "Article 52 transparency requirements, for example, demand that human oversight remain meaningful",
+        "reasoning": "Corpus maps Article 52 as 'Transparency' with description 'Content Safety Shield delivers clear, binary SAFE/UNSAFE verdicts with full audit logging.' The claim that Article 52 requires transparency is correct, but the specific framing around 'human oversight' is not explicitly in the corpus for Article 52—that is mapped to Article 14. Recommend clarifying which article governs which requirement."
+      }
+    ],
+    "score": 0.92,
+    "notes": "Draft is well-grounded in APIRE positioning and corpus facts. Minor clarifications needed on Layer vs. 'tier' terminology, Article 14 vs. Article 52 mapping, and precise scope of encoding-attack handling within the 11-stage pipeline. No hallucinated products, false threat counts, or unverified customer claims detected.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:37:43.955Z"
+  }
+}

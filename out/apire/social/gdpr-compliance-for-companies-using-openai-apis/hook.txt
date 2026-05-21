@@ -1,0 +1,1 @@
+Your AI middleware is a GDPR liability. Here's the architectural fix.

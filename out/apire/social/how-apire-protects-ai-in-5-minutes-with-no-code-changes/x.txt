@@ -1,0 +1,1 @@
+27+ AI-specific threats blocked. PII masked before it hits the model. NIS2/EU AI Act audit trail ready. One endpoint swap, no code changes, 5 minutes. #AIGovernance #NIS2

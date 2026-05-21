@@ -1,0 +1,78 @@
+{
+  "tenant": "apire",
+  "topic": "Prompt injection attacks — what they are and how to stop them",
+  "sources": [
+    "threat-coverage.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "five-layer-architecture.md",
+    "threat-coverage.md",
+    "brand-voice.md",
+    "deployment-and-integration.md",
+    "five-layer-architecture.md",
+    "brand-voice.md"
+  ],
+  "usage": {
+    "input_tokens": 4931,
+    "output_tokens": 2037,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "11-stage security pipeline",
+        "quote": "APIRE's 11-stage security pipeline places encoding attack detection and encoding normalization at stages 2 and 3, before any AI threat detection begins at stage 5.",
+        "reasoning": "The 11-stage pipeline is a technical implementation detail from cloud documentation, not a marketing-facing claim. While accurate per CORPUS, this level of technical detail may be too granular for a general audience piece on prompt injection. Not an error, but worth noting for tone."
+      },
+      {
+        "term": "26+ encoding attack vectors",
+        "quote": "The encoding normalization stage handles 26+ encoding attack vectors and supports up to three levels of nested encoding recursion.",
+        "reasoning": "Supported by CORPUS (Layer 0/encoding-attack-subsystem). Accurate."
+      },
+      {
+        "term": "13 AI-specific threat categories",
+        "quote": "APIRE's Layer 2 AI Threat Protection applies semantic analysis across 13 AI-specific threat categories (five core, eight advanced), with prompt injection as the first and highest-priority core category.",
+        "reasoning": "Supported by CORPUS. The 13 aggregate (5 core + 8 advanced) is canonical. Accurate."
+      },
+      {
+        "term": "six-tier risk classification",
+        "quote": "Each request receives a risk score on a six-tier scale: NO_RISK, MINIMAL, LOW, MEDIUM, HIGH, CRITICAL.",
+        "reasoning": "Supported by CORPUS (Layer 2 risk classification). Accurate."
+      },
+      {
+        "term": "multi-vector correlation amplification",
+        "quote": "When multiple threat categories fire on the same request, the composite score is amplified: two categories trigger a +10% uplift, three categories +20%, four or more +40%.",
+        "reasoning": "Supported by CORPUS (exact percentages cited). Accurate."
+      },
+      {
+        "term": "Article 15 of the EU AI Act",
+        "quote": "Article 15 of the Act requires that high-risk AI systems achieve appropriate levels of accuracy, robustness, and cybersecurity, including resilience against attempts to alter outputs through adversarial manipulation.",
+        "reasoning": "CORPUS maps APIRE controls to Article 15 (Accuracy, Robustness & Cybersecurity) but does not provide the exact text of Article 15 itself. The characterization is consistent with CORPUS positioning, but the specific wording of Article 15's requirements is not verified in source material. Content is accurate in spirit but not directly sourced."
+      },
+      {
+        "term": "89% of enterprises lack purpose-built AI security",
+        "quote": "89% of enterprises, by current measurement—have a specific, documented gap at the most-ranked AI attack vector in the industry.",
+        "reasoning": "Supported by CORPUS (datasheet and multiple briefings cite this stat). Accurate."
+      },
+      {
+        "term": "2,500+ daily AI threats observed",
+        "quote": "Organizations are encountering 2,500+ daily AI threats across their deployments.",
+        "reasoning": "Supported by CORPUS (datasheet hero stat). Accurate."
+      },
+      {
+        "term": "67% year-over-year increase in AI-specific attacks",
+        "quote": "AI-specific attacks increased 67% year-over-year.",
+        "reasoning": "Supported by CORPUS (market stats and datasheet). Accurate."
+      },
+      {
+        "term": "86% of companies deploying AI experienced an AI security incident",
+        "quote": "86% of companies deploying AI experienced an AI security incident in the past 12 months, and prompt injection is one of the most consistently observed vectors in that population.",
+        "reasoning": "Supported by CORPUS (stat library and threat coverage docs). Accurate."
+      }
+    ],
+    "score": 0.92,
+    "notes": "Draft is well-grounded in CORPUS. All quantitative claims are verified. The only minor flag is the paraphrase of Article 15's exact requirements, which is characterized accurately but not directly sourced from technical docs. Overall execution is strong with appropriate depth on encoding, semantic detection, and multi-vector correlation.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:38:45.607Z"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "tenant": "apire",
+  "topic": "NIS2 directive obligations for AI-powered companies",
+  "sources": [
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "_entities.md",
+    "_entities.md",
+    "_entities.md",
+    "compliance-coverage.md",
+    "market-and-industry-data.md"
+  ],
+  "usage": {
+    "input_tokens": 4828,
+    "output_tokens": 1923,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "950+ pre-configured detection rules",
+        "quote": "950+ pre-configured detection rules covering these categories, combined with real-time masking before data reaches an AI provider",
+        "reasoning": "Correct metric is '950+ pre-configured DLP rules' (Layer 4 only), not generalized detection rules. The corpus specifies this is a Layer 4 (Data Leakage Fortress) capability, not an aggregate across all layers. The phrasing could mislead readers into thinking this rule count applies to all detection types."
+      },
+      {
+        "term": "binary SAFE/UNSAFE verdicts",
+        "quote": "Binary SAFE/UNSAFE verdicts with automatic severity scoring and full decision logging",
+        "reasoning": "This phrasing is accurate but incomplete. The corpus specifies that binary SAFE/UNSAFE verdicts are a Layer 1 (Content Safety Shield) capability, and the severity scoring is automatic (Critical/High/Medium). The draft does not misstate this, but it does not contextualize which layer provides this capability, which could create confusion about the scope of APIRE's audit trail capabilities."
+      }
+    ],
+    "score": 0.98,
+    "notes": "Draft is exceptionally well-aligned with corpus. One minor precision issue on DLP rule count framing (clarify Layer 4 scope); otherwise accurate and on-brand.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:40:26.324Z"
+  }
+}

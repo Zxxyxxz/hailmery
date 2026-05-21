@@ -6,7 +6,6 @@ dist/
 .env.*.local
 *.log
 .DS_Store
-out/
 drizzle/meta/_journal.json.bak
 .idea/
 .vscode/
@@ -15,5 +14,9 @@ drizzle/meta/_journal.json.bak
 screenshot-apire.js
 apire-screenshots/
 
-# Generated drafts (CLI output)
-/out/**
+# Source corpus binaries (large .docx/.pdf — extracted text only is in markdown files)
+corpus/apire/*.docx
+corpus/apire/*.pdf
+
+# out/ is committed for V0 so the user can review generated drafts.
+# After V1 we will re-ignore this.

@@ -1,0 +1,1 @@
+Your API gateway doesn't speak prompt injection.

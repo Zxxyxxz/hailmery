@@ -1,0 +1,23 @@
+{
+  "tenant": "apire",
+  "topic": "How APIRE protects AI in 5 minutes with no code changes",
+  "sources": [
+    "positioning-and-promise.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "product-suite-and-risk-surfaces.md",
+    "positioning-and-promise.md",
+    "five-layer-architecture.md",
+    "positioning-and-promise.md"
+  ],
+  "usage": {
+    "input_tokens": 4205,
+    "output_tokens": 463,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "pack": {
+    "linkedin": "Most enterprises spend weeks retrofitting security onto AI integrations. The architectural overhead alone — proxy configurations, SDK modifications, policy rewiring — consumes engineering cycles that should go toward shipping.\n\nAPire takes a different position: replace one endpoint URL, and every prompt and response moving through your AI stack is inspected in real time. No code changes. No architectural overhaul. Five minutes to deployment.\n\nThat's not a simplification — it's the actual mechanism. Swap `api.openai.com` for `app.apire.io`, and your existing SDKs, auth methods, and request formats remain identical. What changes is what happens in between: a five-layer defense system screening for 27+ AI-specific threats — prompt injection, jailbreaks, model manipulation, adversarial inputs — before a single token reaches the model.\n\nFor security architects operating under NIS2 or preparing for EU AI Act obligations, the compliance implication matters as much as the speed. Centralized policy enforcement, real-time dashboards, and audit-ready evidence don't require a parallel project. They're active the moment the proxy is live.\n\nThe data protection model is worth noting separately. This isn't DLP bolted onto a GenAI workflow. PII and proprietary data are detected and masked in volatile RAM before they reach any AI provider — then irrevocably erased. No retention. No exposure surface created by the security layer itself.\n\nThe question most CISOs don't ask until after an incident: at what point does 'we'll secure it later' become a regulatory finding?\n\n#AIGovernance #NIS2 #CyberSecurity",
+    "x": "27+ AI-specific threats blocked. PII masked before it hits the model. NIS2/EU AI Act audit trail ready. One endpoint swap, no code changes, 5 minutes. #AIGovernance #NIS2",
+    "hook": "Your AI stack is live. Your security layer isn't. That gap is the exposure."
+  }
+}

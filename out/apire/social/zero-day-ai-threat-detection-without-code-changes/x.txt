@@ -1,0 +1,1 @@
+67% YoY rise in AI-specific attacks. Signatures don't catch what they've never seen. Semantic intent analysis + multi-vector correlation does — deployed in <5 min, zero code changes. #AISecOps #NIS2

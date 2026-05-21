@@ -1,0 +1,1 @@
+Your WAF cannot read a prompt. Neither can your attacker — until it works.

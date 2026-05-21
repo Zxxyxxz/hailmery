@@ -1,0 +1,43 @@
+{
+  "tenant": "apire",
+  "topic": "Zero-day AI threat detection without code changes",
+  "sources": [
+    "five-layer-architecture.md",
+    "threat-coverage.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "_entities.md",
+    "threat-coverage.md",
+    "five-layer-architecture.md",
+    "threat-coverage.md",
+    "brand-voice.md"
+  ],
+  "usage": {
+    "input_tokens": 4995,
+    "output_tokens": 1897,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "11-stage security pipeline",
+        "quote": "Consider the encoding-attack subsystem alone: the 11-stage security pipeline that every APIRE API request traverses covers more than 26 distinct encoding attack vectors",
+        "reasoning": "The 11-stage pipeline is the FULL technical pipeline (stages 1-11 including Authentication, Encoding Detection, Normalization, Content Safety, AI Threat, Pattern Matching, Data Masking, Provider Routing, Data Unmasking, Response Security, Audit Logging). The encoding-attack subsystem itself runs 13 stages of normalization, not 11. The draft conflates these two distinct pipeline concepts."
+      },
+      {
+        "term": "eight advanced AI threat categories",
+        "quote": "Beyond encoding attacks, the five core AI threat categories—prompt injection, jailbreaking, data exfiltration, social engineering, and model inversion—each contain sub-techniques that evolve continuously.",
+        "reasoning": "The passage lists only the 5 core AI threat categories by name. It does not name or describe the 8 advanced categories (Adversarial Attacks, Compliance Violations, IP Theft, Shadow AI Usage, API Security, Content Abuse, Business Logic Attacks, Context Attacks). The statement 'each contain sub-techniques' is unsupported—the corpus describes these as distinct categories, not sub-techniques within the core five."
+      },
+      {
+        "term": "proprietary, closed AI model",
+        "quote": "The proprietary, closed AI model that powers Layer 2 is never trained on customer data—a foundational architectural decision",
+        "reasoning": "The corpus states that Layers 1 and 2 use 'proprietary, closed models — never trained on customer data.' The draft attributes this only to Layer 2. Both layers use proprietary closed models with this guarantee, not just Layer 2."
+      }
+    ],
+    "score": 0.92,
+    "notes": "Draft is well-aligned with corpus on zero-day defense, semantic analysis, multi-vector correlation, ZRA, deployment model, and regulatory framing. Three minor precision issues: conflation of 11-stage vs. 13-stage pipeline concepts, incomplete naming of advanced threat categories, and attribution of the 'closed AI model' guarantee to Layer 2 only rather than both Layers 1 and 2.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:35:46.229Z"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "tenant": "apire",
+  "topic": "AI security for EU CISOs facing NIS2 compliance",
+  "sources": [
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "market-and-industry-data.md",
+    "_entities.md",
+    "personas.md",
+    "compliance-coverage.md"
+  ],
+  "usage": {
+    "input_tokens": 3927,
+    "output_tokens": 553,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "pack": {
+    "linkedin": "98% of employees are already using unsanctioned AI tools. For EU CISOs, that statistic is not an abstract risk — it's a NIS2 incident waiting to happen.\n\nThe directive covers 160,000+ EU entities and carries fines up to €10 million or 2% of global annual turnover. Yet most security teams are still evaluating AI risk through a traditional DLP lens. That's a structural mismatch. Traditional DLP was built for file transfers and email exfiltration — not conversational AI traffic, not prompt injection, not real-time data masking before a query reaches an LLM.\n\nWhat NIS2-aligned AI security actually requires:\n\n— Active incident prevention, not post-breach logging. When 8.5% of prompts contain sensitive data and AI-specific attacks are rising 67% year-on-year, detection latency is measured in damage, not milliseconds.\n\n— Audit-ready evidence. Regulators want traceable decision trails, not dashboard screenshots. Every detection event needs a human-readable record that survives an enforcement review.\n\n— Governance that covers shadow AI. 75% of organisations using shadow AI have no governance layer over it. That exposure sits squarely within NIS2's incident reporting scope.\n\n— EU AI Act alignment in the same platform. Article 10 (data governance), Article 14 (human oversight with operator override), Article 15 (robustness against AI-specific threats) — these aren't separate workstreams. They belong in a single, auditable control layer.\n\nThe compliance cost pressure is real: 40% of EU IT spending already goes toward compliance-related costs. The architecture decision you make now determines whether AI governance adds to that burden or consolidates it.\n\nFor security architects currently designing AI governance frameworks: where is the biggest gap in your current stack — incident detection, audit trails, or policy enforcement across multiple LLM providers?\n\n#NIS2 #EUAIAct #AIGovernance",
+    "x": "67% YoY rise in AI-specific attacks. NIS2 fines up to €10M. Traditional DLP doesn't cover conversational AI traffic. Purpose-built AI security isn't optional anymore. #NIS2 #EUAIAct",
+    "hook": "98% of your employees are already using unsanctioned AI."
+  }
+}

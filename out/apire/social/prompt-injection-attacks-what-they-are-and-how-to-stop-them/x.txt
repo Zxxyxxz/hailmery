@@ -1,0 +1,1 @@
+67% YoY rise in prompt injection & jailbreak attacks. OWASP ranks it the #1 AI risk. Keyword filters don't catch ROT13, bidirectional text override, or context attacks. Intent detection does. #AIAct #CyberSecurity

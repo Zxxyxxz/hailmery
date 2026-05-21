@@ -1,0 +1,1 @@
+API gateways catch auth failures. They don't catch prompt injection buried in ROT13. 97% of AI breaches involved systems with no proper AI-layer controls. Different threat, different tool. #AIAct #NIS2

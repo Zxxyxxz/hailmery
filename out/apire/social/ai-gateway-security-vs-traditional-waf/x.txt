@@ -1,0 +1,1 @@
+A WAF has no concept of prompt injection. AI threats are semantic — not syntactic. 67% YoY growth in AI-specific attacks demands purpose-built defense, not repurposed perimeter tools. #AISecurtiy #NIS2

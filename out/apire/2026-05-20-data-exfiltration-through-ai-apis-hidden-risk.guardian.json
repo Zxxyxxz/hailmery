@@ -1,0 +1,48 @@
+{
+  "tenant": "apire",
+  "topic": "Data exfiltration through AI APIs — the hidden risk",
+  "sources": [
+    "threat-coverage.md",
+    "threat-coverage.md",
+    "threat-coverage.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "_entities.md",
+    "_entities.md",
+    "market-and-industry-data.md",
+    "PRODUCT-FACTS-EXTRACTED.md"
+  ],
+  "usage": {
+    "input_tokens": 4760,
+    "output_tokens": 1900,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "OWASP classifies prompt injection as the #1 AI security risk",
+        "quote": "OWASP classifies prompt injection as the **#1 AI security risk**.",
+        "reasoning": "Source material states 'Prompt injection is the #1 OWASP AI security risk' but does not cite OWASP as the classifier of this ranking. The CORPUS references OWASP Top 10 for LLM Applications as a compliance framework, but does not attribute the '#1 risk' ranking to OWASP in the way the draft states."
+      },
+      {
+        "term": "multi-vector coordination / composite risk score amplification specifics",
+        "quote": "a request that simultaneously triggers prompt injection and context-window manipulation receives a significantly higher composite risk score than either signal in isolation, because the combination indicates purposeful coordination rather than coincidence.",
+        "reasoning": "The CORPUS states the multi-vector correlation amplification formula (2 categories +10%, 3 +20%, 4+ +40%) but does NOT mention 'context-window manipulation' as a named threat category or detection signal. The draft attributes a specific threat name ('context-window manipulation') that does not appear in the canonical Layer 2 threat category lists (5 core + 8 advanced). 'Context Attacks' is the canonical Layer 2 name; 'context-window manipulation' is not."
+      },
+      {
+        "term": "fine-tuned models trained on proprietary enterprise data",
+        "quote": "particularly relevant where fine-tuned models have been trained on proprietary enterprise data.",
+        "reasoning": "The CORPUS does not discuss fine-tuning or customer-trained/fine-tuned models as part of APIRE's threat model or supported scenarios. This is a generic AI security concept, not a documented APIRE capability or threat vector."
+      },
+      {
+        "term": "supervisory authorities / auditing",
+        "quote": "An organisation that cannot demonstrate active controls preventing sensitive data from flowing unmediated into external AI endpoints will struggle to satisfy either article when supervisory authorities begin auditing deployments in scope.",
+        "reasoning": "The draft makes a reasonable inference about future regulatory enforcement, but the CORPUS does not contain evidence of specific regulatory audit practices or supervisory authority audit procedures related to Article 10/15 of the EU AI Act. This is extrapolation beyond the CORPUS."
+      }
+    ],
+    "score": 0.92,
+    "notes": "Draft is highly aligned with CORPUS messaging on data exfiltration, encoding evasion, compliance drivers, and ZRA. Three minor issues flagged: one imprecise OWASP attribution, one invented threat-category name ('context-window manipulation' vs canonical 'Context Attacks'), one generic AI concept unsupported by CORPUS, and one extrapolated regulatory enforcement claim.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:41:24.045Z"
+  }
+}

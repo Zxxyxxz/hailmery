@@ -1,0 +1,1 @@
+Your AI model sees the data before your DLP does. That's the Article 10 problem.

@@ -1,0 +1,1 @@
+160,000+ EU entities face NIS2 obligations. Traditional DLP wasn't built for AI traffic — no prompt inspection, no inline masking, no audit trail. The gap is real. #NIS2 #AISecuirty

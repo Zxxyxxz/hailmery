@@ -1,0 +1,38 @@
+{
+  "tenant": "apire",
+  "topic": "Why API security is not enough for AI systems",
+  "sources": [
+    "positioning-and-promise.md",
+    "threat-coverage.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "product-suite-and-risk-surfaces.md",
+    "competitive-landscape.md",
+    "deployment-and-integration.md",
+    "competitive-landscape.md"
+  ],
+  "usage": {
+    "input_tokens": 5289,
+    "output_tokens": 1921,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "27+ AI-specific threat categories spanning five core types",
+        "quote": "The threat corpus APIRE has catalogued includes 27+ AI-specific threat categories spanning five core types — Prompt Injection, Jailbreaking, Data Exfiltration, Social Engineering, and Model Inversion — plus eight advanced categories",
+        "reasoning": "Imprecise framing. The 27+ aggregate is: 14 Content Safety categories (Layer 1) + 5 Core AI threats (Layer 2) + 8 Advanced AI threats (Layer 2) = 27 total. The statement 'five core types' with 'eight advanced categories' is correct for the AI-threat subset (5+8=13 AI-specific threats), but then attributing 27+ to 'five core types' is misleading. The 27+ includes the 14 Content Safety categories, which are a separate layer. Suggested fix: '27+ threat categories across all layers: 14 Content Safety categories, plus 5 core AI threats and 8 advanced AI threats (13 AI-specific threats total)' or restructure to avoid the ambiguity."
+      },
+      {
+        "term": "950+ pre-configured detection rules",
+        "quote": "APIRE's data masking layer operates with 950+ pre-configured detection rules across those categories",
+        "reasoning": "Minor imprecision: The 950+ rules are DLP rules (Layer 4), not detection rules generically. The phrasing is acceptable but slightly vague. For precision, should be '950+ pre-configured DLP rules' to clarify this is the Data Masking Fortress layer, not a general detection count."
+      }
+    ],
+    "score": 0.94,
+    "notes": "Excellent draft with strong technical depth and strategic framing. One material ambiguity in threat-category aggregation (27+ framing) and one minor precision gap in rule nomenclature. All other claims (8.5% PII, 26+ encoding vectors, 13-stage pipeline, 3-level recursion, $4.2M breach cost, 86% incident rate, 98% shadow AI, 97% breach stat, EU AI Act/NIS2 compliance requirements) are supported by corpus. No unsupported product claims or fabricated customer references.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:34:02.656Z"
+  }
+}

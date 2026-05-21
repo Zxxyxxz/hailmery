@@ -1,0 +1,721 @@
+{
+  "tenant": "apire",
+  "blogs": [
+    {
+      "topic": "AI security for EU CISOs facing NIS2 compliance",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-nis2-ai-security-eu-cisos-compliance.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-nis2-ai-security-eu-cisos-compliance.guardian.json",
+      "title": "NIS2 and AI Security: What EU CISOs Must Prove",
+      "slug": "nis2-ai-security-eu-cisos-compliance",
+      "wordCount": 1265,
+      "guardianScore": 0.98,
+      "flaggedCount": 5,
+      "flagged": [
+        {
+          "term": "67% year-over-year increase in AI-specific attacks",
+          "quote": "The 67% year-over-year increase in AI-specific attacks observed across enterprise deployments",
+          "reasoning": "Supported by CORPUS as '67% YoY increase in AI-specific attacks (prompt injection & jailbreak volume)' — verified claim, flagged as acceptable."
+        },
+        {
+          "term": "160,000+ EU entities affected by NIS2",
+          "quote": "The NIS2 Directive applies to more than 160,000 EU entities.",
+          "reasoning": "Supported by CORPUS as '160,000+ EU entities' in NIS2 scope — verified claim."
+        },
+        {
+          "term": "€10 million or 2% of global turnover NIS2 fines",
+          "quote": "fines up to €10 million or 2% of global annual turnover, whichever is higher",
+          "reasoning": "Supported by CORPUS as '€10 million or 2% of global turnover (whichever higher)' — verified claim."
+        },
+        {
+          "term": "68% of European businesses struggle with EU AI Act",
+          "quote": "68% of European businesses currently report difficulty understanding their EU AI Act obligations",
+          "reasoning": "Supported by CORPUS as '68% of European businesses struggle with EU AI Act responsibilities' — verified claim."
+        },
+        {
+          "term": "27+ AI-specific threats",
+          "quote": "The 67% year-over-year increase in AI-specific attacks observed across enterprise deployments is not a marketing statistic",
+          "reasoning": "No explicit mention of '27+ threats' in this draft, but CORPUS supports this as a key statistic. Draft does not cite it, so no flag needed."
+        }
+      ],
+      "sources": [
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "market-and-industry-data.md",
+        "_entities.md",
+        "personas.md",
+        "compliance-coverage.md",
+        "_entities.md",
+        "compliance-coverage.md"
+      ],
+      "usage": {
+        "input_tokens": 4800,
+        "output_tokens": 1809,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "Why API security is not enough for AI systems",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-why-api-security-is-not-enough-for-ai-systems.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-why-api-security-is-not-enough-for-ai-systems.guardian.json",
+      "title": "Why API Security Is Not Enough for AI Systems",
+      "slug": "why-api-security-is-not-enough-for-ai-systems",
+      "wordCount": 1343,
+      "guardianScore": 0.94,
+      "flaggedCount": 2,
+      "flagged": [
+        {
+          "term": "27+ AI-specific threat categories spanning five core types",
+          "quote": "The threat corpus APIRE has catalogued includes 27+ AI-specific threat categories spanning five core types — Prompt Injection, Jailbreaking, Data Exfiltration, Social Engineering, and Model Inversion — plus eight advanced categories",
+          "reasoning": "Imprecise framing. The 27+ aggregate is: 14 Content Safety categories (Layer 1) + 5 Core AI threats (Layer 2) + 8 Advanced AI threats (Layer 2) = 27 total. The statement 'five core types' with 'eight advanced categories' is correct for the AI-threat subset (5+8=13 AI-specific threats), but then attributing 27+ to 'five core types' is misleading. The 27+ includes the 14 Content Safety categories, which are a separate layer. Suggested fix: '27+ threat categories across all layers: 14 Content Safety categories, plus 5 core AI threats and 8 advanced AI threats (13 AI-specific threats total)' or restructure to avoid the ambiguity."
+        },
+        {
+          "term": "950+ pre-configured detection rules",
+          "quote": "APIRE's data masking layer operates with 950+ pre-configured detection rules across those categories",
+          "reasoning": "Minor imprecision: The 950+ rules are DLP rules (Layer 4), not detection rules generically. The phrasing is acceptable but slightly vague. For precision, should be '950+ pre-configured DLP rules' to clarify this is the Data Masking Fortress layer, not a general detection count."
+        }
+      ],
+      "sources": [
+        "positioning-and-promise.md",
+        "threat-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "product-suite-and-risk-surfaces.md",
+        "competitive-landscape.md",
+        "deployment-and-integration.md",
+        "competitive-landscape.md"
+      ],
+      "usage": {
+        "input_tokens": 5289,
+        "output_tokens": 1921,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "EU AI Act Article 10 compliance for enterprise",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-eu-ai-act-article-10-enterprise-data-governance.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-eu-ai-act-article-10-enterprise-data-governance.guardian.json",
+      "title": "EU AI Act Article 10: What Enterprise Data Governance Actually Requires",
+      "slug": "eu-ai-act-article-10-enterprise-data-governance",
+      "wordCount": 1309,
+      "guardianScore": 0.98,
+      "flaggedCount": 2,
+      "flagged": [
+        {
+          "term": "950-plus pre-configured detection rules",
+          "quote": "APIRE's Data Leakage Fortress applies this mechanism with 950-plus pre-configured detection rules covering PII, PHI, PCI data categories, financial identifiers, and custom enterprise-defined patterns.",
+          "reasoning": "Correct figure is '950+' (exact from corpus), not '950-plus'. Minor stylistic inconsistency with canonical phrasing."
+        },
+        {
+          "term": "dual-mode tuning",
+          "quote": "This is where dual-mode tuning becomes architecturally relevant.",
+          "reasoning": "Corpus uses 'auto-tuning + manual tuning' or 'Auto/Manual tuning modes' as the canonical phrasing. 'Dual-mode tuning' is not the branded term used in source material."
+        }
+      ],
+      "sources": [
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "_entities.md",
+        "compliance-coverage.md",
+        "_entities.md",
+        "compliance-coverage.md",
+        "_entities.md"
+      ],
+      "usage": {
+        "input_tokens": 4841,
+        "output_tokens": 1811,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "Zero-day AI threat detection without code changes",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-zero-day-ai-threat-detection-without-code-changes.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-zero-day-ai-threat-detection-without-code-changes.guardian.json",
+      "title": "Zero-Day AI Threat Detection Without Code Changes",
+      "slug": "zero-day-ai-threat-detection-without-code-changes",
+      "wordCount": 1266,
+      "guardianScore": 0.92,
+      "flaggedCount": 3,
+      "flagged": [
+        {
+          "term": "11-stage security pipeline",
+          "quote": "Consider the encoding-attack subsystem alone: the 11-stage security pipeline that every APIRE API request traverses covers more than 26 distinct encoding attack vectors",
+          "reasoning": "The 11-stage pipeline is the FULL technical pipeline (stages 1-11 including Authentication, Encoding Detection, Normalization, Content Safety, AI Threat, Pattern Matching, Data Masking, Provider Routing, Data Unmasking, Response Security, Audit Logging). The encoding-attack subsystem itself runs 13 stages of normalization, not 11. The draft conflates these two distinct pipeline concepts."
+        },
+        {
+          "term": "eight advanced AI threat categories",
+          "quote": "Beyond encoding attacks, the five core AI threat categories—prompt injection, jailbreaking, data exfiltration, social engineering, and model inversion—each contain sub-techniques that evolve continuously.",
+          "reasoning": "The passage lists only the 5 core AI threat categories by name. It does not name or describe the 8 advanced categories (Adversarial Attacks, Compliance Violations, IP Theft, Shadow AI Usage, API Security, Content Abuse, Business Logic Attacks, Context Attacks). The statement 'each contain sub-techniques' is unsupported—the corpus describes these as distinct categories, not sub-techniques within the core five."
+        },
+        {
+          "term": "proprietary, closed AI model",
+          "quote": "The proprietary, closed AI model that powers Layer 2 is never trained on customer data—a foundational architectural decision",
+          "reasoning": "The corpus states that Layers 1 and 2 use 'proprietary, closed models — never trained on customer data.' The draft attributes this only to Layer 2. Both layers use proprietary closed models with this guarantee, not just Layer 2."
+        }
+      ],
+      "sources": [
+        "five-layer-architecture.md",
+        "threat-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "_entities.md",
+        "threat-coverage.md",
+        "five-layer-architecture.md",
+        "threat-coverage.md",
+        "brand-voice.md"
+      ],
+      "usage": {
+        "input_tokens": 4995,
+        "output_tokens": 1897,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "GDPR compliance for companies using OpenAI APIs",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-gdpr-openai-api-compliance-middleware-layer.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-gdpr-openai-api-compliance-middleware-layer.guardian.json",
+      "title": "GDPR and the OpenAI API: Where Liability Actually Sits",
+      "slug": "gdpr-openai-api-compliance-middleware-layer",
+      "wordCount": 1383,
+      "guardianScore": 0.92,
+      "flaggedCount": 7,
+      "flagged": [
+        {
+          "term": "APIRE",
+          "quote": "Where APIRE's architecture addresses this directly",
+          "reasoning": "The draft mentions 'APIRE' by name in the section heading but does not introduce APIRE as a product or vendor until deep into the section. The earlier body text discusses a generic 'middleware layer' and 'inspection layer' without naming APIRE, creating ambiguity about whether APIRE is the subject or just one example. The CORPUS requires that specific product names appear in context with clear identification of what they are."
+        },
+        {
+          "term": "950 pre-configured detection rules",
+          "quote": "The Data Leakage Fortress component applies more than 950 pre-configured detection rules against prompt content",
+          "reasoning": "Accurate per CORPUS (Layer 4 DLP has '950+ pre-configured rules'). No flag."
+        },
+        {
+          "term": "single URL change",
+          "quote": "the platform supports OpenAI integration through a single URL change",
+          "reasoning": "Supported by CORPUS: 'zero-touch / zero code change: a single endpoint URL swap (e.g., `api.openai.com` → `app.apire.io`)'. Accurate."
+        },
+        {
+          "term": "160,000 EU organisations",
+          "quote": "the directive's scope covers more than 160,000 EU organisations",
+          "reasoning": "Accurate per CORPUS: 'NIS2 Directive — out-of-the-box compliance for 160,000+ affected EU entities'. This is a cited industry stat."
+        },
+        {
+          "term": "€10 million or 2% of global turnover",
+          "quote": "fines up to €10 million or 2% of global turnover",
+          "reasoning": "Accurate per CORPUS NIS2 penalties. Supported."
+        },
+        {
+          "term": "masking before transmission",
+          "quote": "Inline masking replaces sensitive content before the prompt reaches the OpenAI endpoint.",
+          "reasoning": "Supported by CORPUS: Layer 4 includes 'inline masking & anonymization'. The draft's phrasing is accurate to the product capability."
+        },
+        {
+          "term": "Zero-Retention Architecture",
+          "quote": "APIRE's Zero-Retention Architecture is built on a single operational principle: process everything in volatile memory, keep nothing.",
+          "reasoning": "Accurate per CORPUS definition. ZRA is canonical and well-documented."
+        }
+      ],
+      "sources": [
+        "_entities.md",
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "_entities.md",
+        "deployment-and-integration.md"
+      ],
+      "usage": {
+        "input_tokens": 5133,
+        "output_tokens": 1935,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "AI gateway security vs traditional WAF",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-ai-gateway-security-vs-traditional-waf.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-ai-gateway-security-vs-traditional-waf.guardian.json",
+      "title": "AI Gateway Security vs Traditional WAF",
+      "slug": "ai-gateway-security-vs-traditional-waf",
+      "wordCount": 1333,
+      "guardianScore": 0.92,
+      "flaggedCount": 6,
+      "flagged": [
+        {
+          "term": "27+ AI-specific threat categories organised into two tiers",
+          "quote": "The APIRE corpus documents 27+ AI-specific threat categories organised into two tiers.",
+          "reasoning": "The corpus organizes threats into Layers, not 'two tiers'. Layer 1 has 14 Content Safety categories; Layer 2 has 5 Core + 8 Advanced AI threats (13 total). The aggregate is 27+, but the framing as 'two tiers' is not supported. Should reference the specific layer structure."
+        },
+        {
+          "term": "26+ encoding attack vectors through a 13-stage normalisation process",
+          "quote": "The APIRE pipeline addresses 26+ encoding attack vectors through a 13-stage normalisation process that handles up to three levels of nested encoding recursion.",
+          "reasoning": "The 13-stage normalization pipeline is correct per corpus. However, the 26+ encoding vectors are a subset of the 11-stage security pipeline (stages 2–3 specifically handle encoding attacks). The phrasing 'APIRE pipeline' is correct, but this should clarify that encoding normalization is stages 2–3 of the 11-stage pipeline, not a separate system."
+        },
+        {
+          "term": "traditional DLP inspects known file types",
+          "quote": "Its rule engine inspects known file types, looks for structured data patterns (credit card numbers, social security numbers), and enforces egress policies at the network or endpoint layer.",
+          "reasoning": "This is a generic description of traditional DLP, not a claim about APIRE. However, the draft's framing of DLP limitations is not directly contradicted by the corpus, which does not detail traditional DLP mechanics. The claim is general industry knowledge and acceptable in context."
+        },
+        {
+          "term": "150+ data types",
+          "quote": "purpose-built DLP for AI requires inline inspection of request *and* response payloads, masking before data reaches the model rather than only alerting after egress, and granular classification across 150+ data types",
+          "reasoning": "Corpus confirms '950+ pre-configured DLP rules covering 150+ data types.' Claim is accurate and supported."
+        },
+        {
+          "term": "67% year-over-year increase in AI-specific attack volume",
+          "quote": "particularly given the 67% year-over-year increase in AI-specific attack volume documented in the corpus",
+          "reasoning": "Corpus confirms '67% YoY increase in AI-specific attacks (prompt injection & jailbreak volume).' Claim is accurate and supported."
+        },
+        {
+          "term": "Article 52 transparency requirements",
+          "quote": "Article 52 transparency requirements, for example, demand that human oversight remain meaningful",
+          "reasoning": "Corpus maps Article 52 as 'Transparency' with description 'Content Safety Shield delivers clear, binary SAFE/UNSAFE verdicts with full audit logging.' The claim that Article 52 requires transparency is correct, but the specific framing around 'human oversight' is not explicitly in the corpus for Article 52—that is mapped to Article 14. Recommend clarifying which article governs which requirement."
+        }
+      ],
+      "sources": [
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "deployment-and-integration.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "five-layer-architecture.md",
+        "competitive-landscape.md",
+        "five-layer-architecture.md",
+        "threat-coverage.md"
+      ],
+      "usage": {
+        "input_tokens": 5231,
+        "output_tokens": 1911,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "Prompt injection attacks — what they are and how to stop them",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-prompt-injection-attacks-what-they-are-how-to-stop-them.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-prompt-injection-attacks-what-they-are-how-to-stop-them.guardian.json",
+      "title": "Prompt Injection Attacks: What They Are and How to Stop Them",
+      "slug": "prompt-injection-attacks-what-they-are-how-to-stop-them",
+      "wordCount": 1312,
+      "guardianScore": 0.92,
+      "flaggedCount": 10,
+      "flagged": [
+        {
+          "term": "11-stage security pipeline",
+          "quote": "APIRE's 11-stage security pipeline places encoding attack detection and encoding normalization at stages 2 and 3, before any AI threat detection begins at stage 5.",
+          "reasoning": "The 11-stage pipeline is a technical implementation detail from cloud documentation, not a marketing-facing claim. While accurate per CORPUS, this level of technical detail may be too granular for a general audience piece on prompt injection. Not an error, but worth noting for tone."
+        },
+        {
+          "term": "26+ encoding attack vectors",
+          "quote": "The encoding normalization stage handles 26+ encoding attack vectors and supports up to three levels of nested encoding recursion.",
+          "reasoning": "Supported by CORPUS (Layer 0/encoding-attack-subsystem). Accurate."
+        },
+        {
+          "term": "13 AI-specific threat categories",
+          "quote": "APIRE's Layer 2 AI Threat Protection applies semantic analysis across 13 AI-specific threat categories (five core, eight advanced), with prompt injection as the first and highest-priority core category.",
+          "reasoning": "Supported by CORPUS. The 13 aggregate (5 core + 8 advanced) is canonical. Accurate."
+        },
+        {
+          "term": "six-tier risk classification",
+          "quote": "Each request receives a risk score on a six-tier scale: NO_RISK, MINIMAL, LOW, MEDIUM, HIGH, CRITICAL.",
+          "reasoning": "Supported by CORPUS (Layer 2 risk classification). Accurate."
+        },
+        {
+          "term": "multi-vector correlation amplification",
+          "quote": "When multiple threat categories fire on the same request, the composite score is amplified: two categories trigger a +10% uplift, three categories +20%, four or more +40%.",
+          "reasoning": "Supported by CORPUS (exact percentages cited). Accurate."
+        },
+        {
+          "term": "Article 15 of the EU AI Act",
+          "quote": "Article 15 of the Act requires that high-risk AI systems achieve appropriate levels of accuracy, robustness, and cybersecurity, including resilience against attempts to alter outputs through adversarial manipulation.",
+          "reasoning": "CORPUS maps APIRE controls to Article 15 (Accuracy, Robustness & Cybersecurity) but does not provide the exact text of Article 15 itself. The characterization is consistent with CORPUS positioning, but the specific wording of Article 15's requirements is not verified in source material. Content is accurate in spirit but not directly sourced."
+        },
+        {
+          "term": "89% of enterprises lack purpose-built AI security",
+          "quote": "89% of enterprises, by current measurement—have a specific, documented gap at the most-ranked AI attack vector in the industry.",
+          "reasoning": "Supported by CORPUS (datasheet and multiple briefings cite this stat). Accurate."
+        },
+        {
+          "term": "2,500+ daily AI threats observed",
+          "quote": "Organizations are encountering 2,500+ daily AI threats across their deployments.",
+          "reasoning": "Supported by CORPUS (datasheet hero stat). Accurate."
+        },
+        {
+          "term": "67% year-over-year increase in AI-specific attacks",
+          "quote": "AI-specific attacks increased 67% year-over-year.",
+          "reasoning": "Supported by CORPUS (market stats and datasheet). Accurate."
+        },
+        {
+          "term": "86% of companies deploying AI experienced an AI security incident",
+          "quote": "86% of companies deploying AI experienced an AI security incident in the past 12 months, and prompt injection is one of the most consistently observed vectors in that population.",
+          "reasoning": "Supported by CORPUS (stat library and threat coverage docs). Accurate."
+        }
+      ],
+      "sources": [
+        "threat-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "five-layer-architecture.md",
+        "threat-coverage.md",
+        "brand-voice.md",
+        "deployment-and-integration.md",
+        "five-layer-architecture.md",
+        "brand-voice.md"
+      ],
+      "usage": {
+        "input_tokens": 4931,
+        "output_tokens": 2037,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "How APIRE protects AI in 5 minutes with no code changes",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-enterprise-ai-security-five-minutes-zero-code-changes.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-enterprise-ai-security-five-minutes-zero-code-changes.guardian.json",
+      "title": "Enterprise AI Security in 5 Minutes, Zero Code Changes",
+      "slug": "enterprise-ai-security-five-minutes-zero-code-changes",
+      "wordCount": 1157,
+      "guardianScore": 0.98,
+      "flaggedCount": 2,
+      "flagged": [
+        {
+          "term": "Layer 4 — Data Shield",
+          "quote": "Layer 4 — Data Shield handles PII and proprietary data through real-time detection and masking",
+          "reasoning": "Canonical name is 'Data Masking Fortress' or 'Data Leakage Fortress', not 'Data Shield'. The term 'Data Shield' does not appear in CORPUS as a layer name."
+        },
+        {
+          "term": "27+ AI-specific threats",
+          "quote": "This layer provides semantic defense against 27+ AI-specific threats — prompt injection, jailbreaks, model manipulation, adversarial inputs, indirect injection through retrieved documents in RAG pipelines.",
+          "reasoning": "27+ is the aggregate of all threat categories (14 content safety + 5 core + 8 advanced). Layer 2 specifically contains 5 core + 8 advanced = 13 AI-specific threats, not 27+. The phrasing conflates the total threat landscape with Layer 2's scope."
+        }
+      ],
+      "sources": [
+        "positioning-and-promise.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "product-suite-and-risk-surfaces.md",
+        "positioning-and-promise.md",
+        "five-layer-architecture.md",
+        "positioning-and-promise.md",
+        "positioning-and-promise.md",
+        "personas.md"
+      ],
+      "usage": {
+        "input_tokens": 5266,
+        "output_tokens": 1702,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "NIS2 directive obligations for AI-powered companies",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-nis2-obligations-ai-powered-enterprises.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-nis2-obligations-ai-powered-enterprises.guardian.json",
+      "title": "NIS2 Obligations for AI-Powered Enterprises",
+      "slug": "nis2-obligations-ai-powered-enterprises",
+      "wordCount": 1291,
+      "guardianScore": 0.98,
+      "flaggedCount": 2,
+      "flagged": [
+        {
+          "term": "950+ pre-configured detection rules",
+          "quote": "950+ pre-configured detection rules covering these categories, combined with real-time masking before data reaches an AI provider",
+          "reasoning": "Correct metric is '950+ pre-configured DLP rules' (Layer 4 only), not generalized detection rules. The corpus specifies this is a Layer 4 (Data Leakage Fortress) capability, not an aggregate across all layers. The phrasing could mislead readers into thinking this rule count applies to all detection types."
+        },
+        {
+          "term": "binary SAFE/UNSAFE verdicts",
+          "quote": "Binary SAFE/UNSAFE verdicts with automatic severity scoring and full decision logging",
+          "reasoning": "This phrasing is accurate but incomplete. The corpus specifies that binary SAFE/UNSAFE verdicts are a Layer 1 (Content Safety Shield) capability, and the severity scoring is automatic (Critical/High/Medium). The draft does not misstate this, but it does not contextualize which layer provides this capability, which could create confusion about the scope of APIRE's audit trail capabilities."
+        }
+      ],
+      "sources": [
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "_entities.md",
+        "_entities.md",
+        "_entities.md",
+        "compliance-coverage.md",
+        "market-and-industry-data.md"
+      ],
+      "usage": {
+        "input_tokens": 4828,
+        "output_tokens": 1923,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "Data exfiltration through AI APIs — the hidden risk",
+      "file": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-data-exfiltration-through-ai-apis-hidden-risk.md",
+      "guardianFile": "/Users/xxxyxxx/Desktop/hailmery/out/apire/2026-05-20-data-exfiltration-through-ai-apis-hidden-risk.guardian.json",
+      "title": "Data Exfiltration Through AI APIs: The Hidden Risk",
+      "slug": "data-exfiltration-through-ai-apis-hidden-risk",
+      "wordCount": 1300,
+      "guardianScore": 0.92,
+      "flaggedCount": 4,
+      "flagged": [
+        {
+          "term": "OWASP classifies prompt injection as the #1 AI security risk",
+          "quote": "OWASP classifies prompt injection as the **#1 AI security risk**.",
+          "reasoning": "Source material states 'Prompt injection is the #1 OWASP AI security risk' but does not cite OWASP as the classifier of this ranking. The CORPUS references OWASP Top 10 for LLM Applications as a compliance framework, but does not attribute the '#1 risk' ranking to OWASP in the way the draft states."
+        },
+        {
+          "term": "multi-vector coordination / composite risk score amplification specifics",
+          "quote": "a request that simultaneously triggers prompt injection and context-window manipulation receives a significantly higher composite risk score than either signal in isolation, because the combination indicates purposeful coordination rather than coincidence.",
+          "reasoning": "The CORPUS states the multi-vector correlation amplification formula (2 categories +10%, 3 +20%, 4+ +40%) but does NOT mention 'context-window manipulation' as a named threat category or detection signal. The draft attributes a specific threat name ('context-window manipulation') that does not appear in the canonical Layer 2 threat category lists (5 core + 8 advanced). 'Context Attacks' is the canonical Layer 2 name; 'context-window manipulation' is not."
+        },
+        {
+          "term": "fine-tuned models trained on proprietary enterprise data",
+          "quote": "particularly relevant where fine-tuned models have been trained on proprietary enterprise data.",
+          "reasoning": "The CORPUS does not discuss fine-tuning or customer-trained/fine-tuned models as part of APIRE's threat model or supported scenarios. This is a generic AI security concept, not a documented APIRE capability or threat vector."
+        },
+        {
+          "term": "supervisory authorities / auditing",
+          "quote": "An organisation that cannot demonstrate active controls preventing sensitive data from flowing unmediated into external AI endpoints will struggle to satisfy either article when supervisory authorities begin auditing deployments in scope.",
+          "reasoning": "The draft makes a reasonable inference about future regulatory enforcement, but the CORPUS does not contain evidence of specific regulatory audit practices or supervisory authority audit procedures related to Article 10/15 of the EU AI Act. This is extrapolation beyond the CORPUS."
+        }
+      ],
+      "sources": [
+        "threat-coverage.md",
+        "threat-coverage.md",
+        "threat-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "_entities.md",
+        "_entities.md",
+        "market-and-industry-data.md",
+        "PRODUCT-FACTS-EXTRACTED.md"
+      ],
+      "usage": {
+        "input_tokens": 4760,
+        "output_tokens": 1900,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    }
+  ],
+  "social": [
+    {
+      "topic": "AI security for EU CISOs facing NIS2 compliance",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/ai-security-for-eu-cisos-facing-nis2-compliance",
+      "linkedinWords": 281,
+      "xChars": 181,
+      "hookChars": 56,
+      "sources": [
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "market-and-industry-data.md",
+        "_entities.md",
+        "personas.md",
+        "compliance-coverage.md"
+      ],
+      "usage": {
+        "input_tokens": 3927,
+        "output_tokens": 553,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "Why API security is not enough for AI systems",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/why-api-security-is-not-enough-for-ai-systems",
+      "linkedinWords": 273,
+      "xChars": 201,
+      "hookChars": 48,
+      "sources": [
+        "positioning-and-promise.md",
+        "threat-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "product-suite-and-risk-surfaces.md",
+        "competitive-landscape.md"
+      ],
+      "usage": {
+        "input_tokens": 4222,
+        "output_tokens": 477,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "EU AI Act Article 10 compliance for enterprise",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/eu-ai-act-article-10-compliance-for-enterprise",
+      "linkedinWords": 278,
+      "xChars": 219,
+      "hookChars": 80,
+      "sources": [
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "_entities.md",
+        "compliance-coverage.md",
+        "_entities.md"
+      ],
+      "usage": {
+        "input_tokens": 4057,
+        "output_tokens": 499,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "Zero-day AI threat detection without code changes",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/zero-day-ai-threat-detection-without-code-changes",
+      "linkedinWords": 265,
+      "xChars": 198,
+      "hookChars": 52,
+      "sources": [
+        "five-layer-architecture.md",
+        "threat-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "_entities.md",
+        "threat-coverage.md",
+        "five-layer-architecture.md"
+      ],
+      "usage": {
+        "input_tokens": 4260,
+        "output_tokens": 494,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "GDPR compliance for companies using OpenAI APIs",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/gdpr-compliance-for-companies-using-openai-apis",
+      "linkedinWords": 250,
+      "xChars": 186,
+      "hookChars": 69,
+      "sources": [
+        "_entities.md",
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "compliance-coverage.md",
+        "compliance-coverage.md"
+      ],
+      "usage": {
+        "input_tokens": 4259,
+        "output_tokens": 443,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "AI gateway security vs traditional WAF",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/ai-gateway-security-vs-traditional-waf",
+      "linkedinWords": 251,
+      "xChars": 201,
+      "hookChars": 74,
+      "sources": [
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "deployment-and-integration.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "five-layer-architecture.md",
+        "competitive-landscape.md"
+      ],
+      "usage": {
+        "input_tokens": 4152,
+        "output_tokens": 488,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "Prompt injection attacks — what they are and how to stop them",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/prompt-injection-attacks-what-they-are-and-how-to-stop-them",
+      "linkedinWords": 304,
+      "xChars": 213,
+      "hookChars": 79,
+      "sources": [
+        "threat-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "five-layer-architecture.md",
+        "threat-coverage.md",
+        "brand-voice.md",
+        "deployment-and-integration.md"
+      ],
+      "usage": {
+        "input_tokens": 4166,
+        "output_tokens": 554,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "How APIRE protects AI in 5 minutes with no code changes",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/how-apire-protects-ai-in-5-minutes-with-no-code-changes",
+      "linkedinWords": 235,
+      "xChars": 170,
+      "hookChars": 75,
+      "sources": [
+        "positioning-and-promise.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "product-suite-and-risk-surfaces.md",
+        "positioning-and-promise.md",
+        "five-layer-architecture.md",
+        "positioning-and-promise.md"
+      ],
+      "usage": {
+        "input_tokens": 4205,
+        "output_tokens": 463,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "NIS2 directive obligations for AI-powered companies",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/nis2-directive-obligations-for-ai-powered-companies",
+      "linkedinWords": 278,
+      "xChars": 181,
+      "hookChars": 68,
+      "sources": [
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "compliance-coverage.md",
+        "_entities.md",
+        "_entities.md",
+        "_entities.md"
+      ],
+      "usage": {
+        "input_tokens": 3762,
+        "output_tokens": 511,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "topic": "Data exfiltration through AI APIs — the hidden risk",
+      "dir": "/Users/xxxyxxx/Desktop/hailmery/out/apire/social/data-exfiltration-through-ai-apis-the-hidden-risk",
+      "linkedinWords": 279,
+      "xChars": 154,
+      "hookChars": 63,
+      "sources": [
+        "threat-coverage.md",
+        "threat-coverage.md",
+        "threat-coverage.md",
+        "PRODUCT-FACTS-EXTRACTED.md",
+        "_entities.md",
+        "_entities.md"
+      ],
+      "usage": {
+        "input_tokens": 3700,
+        "output_tokens": 508,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    }
+  ],
+  "timings": {
+    "startedAt": "2026-05-20T22:32:11.628Z",
+    "finishedAt": "2026-05-20T22:43:46.137Z",
+    "durationSec": 695
+  },
+  "totals": {
+    "blogs": 10,
+    "social": 10
+  }
+}

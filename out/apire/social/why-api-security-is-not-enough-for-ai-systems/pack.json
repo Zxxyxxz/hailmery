@@ -1,0 +1,23 @@
+{
+  "tenant": "apire",
+  "topic": "Why API security is not enough for AI systems",
+  "sources": [
+    "positioning-and-promise.md",
+    "threat-coverage.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "product-suite-and-risk-surfaces.md",
+    "competitive-landscape.md"
+  ],
+  "usage": {
+    "input_tokens": 4222,
+    "output_tokens": 477,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "pack": {
+    "linkedin": "97% of AI-related security breaches involved systems lacking proper access controls. Yet most enterprises are still trying to secure AI with tools built for a different threat era.\n\nTraditional API security validates authentication, enforces rate limits, and inspects known attack signatures. That is necessary — but it does not address what happens inside the prompt. It cannot detect a jailbreak disguised in ROT13 encoding. It will not catch a social engineering attack nested three levels deep in recursive encoding. It has no concept of model inversion, adversarial inputs, or multi-vector prompt injection campaigns where the composite risk is 40% higher than any single signal.\n\nAI API transactions carry a distinct threat surface. 8.5% of prompts submitted to AI tools contain sensitive information — PII, credentials, internal data — and that data travels through providers like OpenAI, Anthropic, and Gemini unless something intercepts it inline, before the model ever sees it. Standard API gateways do not do this. DLP tools designed for file transfer and email do not do this either. Generative AI creates a new data flow that neither category was built to inspect.\n\nWhat that surface requires is semantic threat detection — not just signature matching — combined with real-time data masking, content safety analysis across 14 categories, and policy enforcement that maps explicitly to NIS2 and the EU AI Act. These are engineering requirements, not compliance talking points.\n\nThe 67% year-over-year rise in prompt injection and jailbreak volume is not a future risk. It is the current baseline.\n\nSecurity architects: when you last reviewed your AI API integration, what layer was sitting between your application and the model?\n\n#AIGovernance #CyberSecurity #NIS2",
+    "x": "API gateways catch auth failures. They don't catch prompt injection buried in ROT13. 97% of AI breaches involved systems with no proper AI-layer controls. Different threat, different tool. #AIAct #NIS2",
+    "hook": "Your API gateway doesn't speak prompt injection."
+  }
+}

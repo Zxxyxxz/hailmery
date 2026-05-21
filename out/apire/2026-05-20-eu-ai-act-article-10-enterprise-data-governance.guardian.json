@@ -1,0 +1,38 @@
+{
+  "tenant": "apire",
+  "topic": "EU AI Act Article 10 compliance for enterprise",
+  "sources": [
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "_entities.md",
+    "compliance-coverage.md",
+    "_entities.md",
+    "compliance-coverage.md",
+    "_entities.md"
+  ],
+  "usage": {
+    "input_tokens": 4841,
+    "output_tokens": 1811,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "guardian": {
+    "flagged": [
+      {
+        "term": "950-plus pre-configured detection rules",
+        "quote": "APIRE's Data Leakage Fortress applies this mechanism with 950-plus pre-configured detection rules covering PII, PHI, PCI data categories, financial identifiers, and custom enterprise-defined patterns.",
+        "reasoning": "Correct figure is '950+' (exact from corpus), not '950-plus'. Minor stylistic inconsistency with canonical phrasing."
+      },
+      {
+        "term": "dual-mode tuning",
+        "quote": "This is where dual-mode tuning becomes architecturally relevant.",
+        "reasoning": "Corpus uses 'auto-tuning + manual tuning' or 'Auto/Manual tuning modes' as the canonical phrasing. 'Dual-mode tuning' is not the branded term used in source material."
+      }
+    ],
+    "score": 0.98,
+    "notes": "Excellent Article 10 compliance piece grounded entirely in verified corpus facts. Minor phrasing variations only; no unsupported product claims or unverified statistics.",
+    "model": "claude-haiku-4-5-20251001",
+    "generatedAt": "2026-05-20T22:34:50.985Z"
+  }
+}

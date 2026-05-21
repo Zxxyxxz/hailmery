@@ -36,7 +36,7 @@ export async function findTenantBySlug(
   slug: string
 ): Promise<{ id: string; name: string; slug: string } | null> {
   const result = await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL row_security = off`);
+    await tx.execute(sql`SELECT set_config('app.rls_bypass', 'true', true)`);
     const rows = await tx.execute<{ id: string; name: string; slug: string }>(
       sql`SELECT id, name, slug FROM marketing.tenants WHERE slug = ${slug} LIMIT 1`
     );

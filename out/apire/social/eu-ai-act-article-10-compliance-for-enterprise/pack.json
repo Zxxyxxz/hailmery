@@ -1,0 +1,23 @@
+{
+  "tenant": "apire",
+  "topic": "EU AI Act Article 10 compliance for enterprise",
+  "sources": [
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "compliance-coverage.md",
+    "_entities.md",
+    "compliance-coverage.md",
+    "_entities.md"
+  ],
+  "usage": {
+    "input_tokens": 4057,
+    "output_tokens": 499,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "pack": {
+    "linkedin": "68% of European businesses still struggle to understand their EU AI Act responsibilities — and Article 10 is where most will be exposed first.\n\nArticle 10 sets the standard for data governance in AI systems: who controls what data enters the model, how it's classified, and what prevents unauthorized exposure. For enterprises running AI at scale, that's not a policy question. It's an architectural one.\n\nThe compliance gap most organizations miss: traditional DLP wasn't designed for AI conversational traffic. A rule set built for email or endpoint file transfers doesn't account for the prompt layer — where sensitive data moves in real time, often without a human reviewer in the loop.\n\nArticle 10 compliance requires controls that act before the model receives the data. That means inline masking at the prompt level, classification rules that cover PII, PHI, cardholder data, and proprietary information simultaneously, and an audit trail that can prove to a regulator what was blocked, masked, or allowed — and when.\n\nThe architecture that handles this isn't complicated in principle: intercept the prompt, apply 950+ DLP rules, mask or block the sensitive elements, pass only clean data to the AI provider, and log every decision. Zero retention of the sensitive payload. The compliance outcome is structural, not procedural.\n\nWhat makes this worth examining now: NIS2 penalties reach €10 million or 2% of global turnover. EU AI Act enforcement is not theoretical. And the organisations that treat Article 10 as a checkbox will find out the difference the hard way.\n\nFor security architects currently evaluating AI deployment: where in your current stack does data governance actually intercept the prompt before the model sees it?\n\n#EUAIAct #DataGovernance #AIRisk",
+    "x": "EU AI Act Art. 10 isn't a policy checkbox — it's an architecture requirement. Inline masking before the model sees the prompt, 950+ DLP rules, zero retention. Governance built in, not bolted on. #EUAIAct #DataGovernance",
+    "hook": "Your AI model sees the data before your DLP does. That's the Article 10 problem."
+  }
+}

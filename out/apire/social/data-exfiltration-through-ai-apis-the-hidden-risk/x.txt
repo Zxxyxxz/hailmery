@@ -1,0 +1,1 @@
+8.5% of prompts sent to AI tools contain PII or credentials. Classic DLP doesn't inspect LLM API semantics. That's a gap NIS2 doesn't excuse. #NIS2 #AIAct

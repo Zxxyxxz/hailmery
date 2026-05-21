@@ -1,0 +1,23 @@
+{
+  "tenant": "apire",
+  "topic": "Data exfiltration through AI APIs — the hidden risk",
+  "sources": [
+    "threat-coverage.md",
+    "threat-coverage.md",
+    "threat-coverage.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "_entities.md",
+    "_entities.md"
+  ],
+  "usage": {
+    "input_tokens": 3700,
+    "output_tokens": 508,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  },
+  "pack": {
+    "linkedin": "8.5% of prompts submitted to enterprise AI tools contain sensitive information — PII, credentials, internal data. That number is not a projection. It reflects what is already moving through AI APIs today, largely unmonitored.\n\nThe threat is not hypothetical. Data exfiltration through AI interfaces is one of five core attack categories APIRE's threat model is built around — alongside prompt injection, jailbreaking, social engineering, and model inversion. What makes it operationally distinct is the attack surface: an employee doesn't need to copy a file to an external drive. A carefully crafted prompt can cause a model to surface data it has seen in context, reconstruct fragments of retrieval-augmented inputs, or be manipulated into echoing sensitive content back through an apparently legitimate interaction.\n\nClassic DLP was designed for files, endpoints, and network egress. It was not designed to inspect the semantic intent of a natural-language request traversing an LLM API. These are categorically different problems requiring different controls.\n\nUnder NIS2, the obligation to implement appropriate technical measures to manage AI-related risk is not optional for the 160,000+ entities in scope. The EU AI Act adds a further governance layer for high-risk deployments. Neither framework accepts 'we didn't know the channel existed' as a defensible position.\n\nThe infrastructure to address this exists. A purpose-built AI security layer — inspecting both request and response, applying 950+ DLP rules inline, masking before data reaches the model or leaves the pipeline — is deployable today without code changes to existing integrations.\n\n89% of enterprises currently lack that layer. The gap is measurable. The regulatory exposure is real.\n\nWhat is your organisation's current visibility into what leaves through its AI API calls?\n\n#NIS2 #AIActEU #CyberSecurity",
+    "x": "8.5% of prompts sent to AI tools contain PII or credentials. Classic DLP doesn't inspect LLM API semantics. That's a gap NIS2 doesn't excuse. #NIS2 #AIAct",
+    "hook": "Your AI API is leaking data. Most security stacks can't see it."
+  }
+}
