@@ -12,11 +12,24 @@ import { html } from 'hono/html';
 import { makeDb } from './db/client.js';
 import { findTenantBySlug } from './lib/tenant.js';
 import { brandVoicePage, brandVoiceSave } from './routes/settings.js';
+import { runMailSync } from './jobs/scheduler.js';
+import {
+  processSendGridWebhookEvents,
+  resolveMailSyncDeps,
+  verifySendGridSignature,
+  SENDGRID_SIGNATURE_HEADER,
+  SENDGRID_TIMESTAMP_HEADER,
+} from './services/mailsync.js';
+import type { SendGridEvent } from './adapters/sendgrid.js';
+import { assertUuid } from './lib/tenant.js';
 
 type Env = {
   DATABASE_URL: string;
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
+  SENDGRID_WEBHOOK_SECRET: string;
+  SECRETS_KEY: string;
+  HUBSPOT_EVENT_TEMPLATE_ID?: string;
   ENVIRONMENT?: string;
 };
 
@@ -57,4 +70,62 @@ app.post('/settings/brand-voice', async (c) => {
   return brandVoiceSave(c, db, tenant);
 });
 
-export default app;
+// ──────────────────────────────────────────────────────────────────
+// POST /webhooks/sendgrid — SendGrid Event Webhook ingest.
+//   - verifies the ECDSA signature against SENDGRID_WEBHOOK_SECRET
+//   - resolves tenant from the X-Tenant-ID header
+//   - processes events out-of-band via waitUntil and returns 200 fast
+//     (SendGrid retries for up to 24h on any non-200)
+// ──────────────────────────────────────────────────────────────────
+app.post('/webhooks/sendgrid', async (c) => {
+  const raw = await c.req.text();
+
+  const signature = c.req.header(SENDGRID_SIGNATURE_HEADER);
+  const timestamp = c.req.header(SENDGRID_TIMESTAMP_HEADER);
+  const secret = c.env.SENDGRID_WEBHOOK_SECRET;
+  if (!secret) return c.text('webhook not configured', 500);
+
+  const valid = await verifySendGridSignature(
+    secret,
+    raw,
+    signature ?? '',
+    timestamp ?? '',
+  );
+  if (!valid) return c.text('invalid signature', 401);
+
+  const tenantId = c.req.header('X-Tenant-ID');
+  if (!tenantId) return c.text('missing X-Tenant-ID', 400);
+  try {
+    assertUuid(tenantId, 'X-Tenant-ID');
+  } catch {
+    return c.text('invalid X-Tenant-ID', 400);
+  }
+
+  let events: SendGridEvent[];
+  try {
+    const parsed = JSON.parse(raw);
+    events = Array.isArray(parsed) ? (parsed as SendGridEvent[]) : [];
+  } catch {
+    return c.text('invalid JSON', 400);
+  }
+
+  c.executionCtx.waitUntil(
+    (async () => {
+      try {
+        const deps = await resolveMailSyncDeps(c.env, tenantId);
+        await processSendGridWebhookEvents(tenantId, events, deps);
+      } catch (err) {
+        console.error('[sendgrid webhook] processing failed:', err);
+      }
+    })(),
+  );
+
+  return c.text('ok', 200);
+});
+
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runMailSync(env));
+  },
+};

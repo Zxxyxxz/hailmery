@@ -80,6 +80,22 @@ async function main() {
            updated_at = now()`,
         [siteId, tenantId, JSON.stringify(t.brandVoice)]
       );
+
+      // Default evergreen campaign per tenant (idempotent)
+      const campRes = await client.query(
+        `SELECT id FROM marketing.campaigns
+         WHERE tenant_id = $1 AND name = 'Default Evergreen' AND type = 'evergreen'
+         LIMIT 1`,
+        [tenantId]
+      );
+      if (campRes.rows.length === 0) {
+        await client.query(
+          `INSERT INTO marketing.campaigns (tenant_id, site_id, name, type, status)
+           VALUES ($1, $2, 'Default Evergreen', 'evergreen', 'active')`,
+          [tenantId, siteId]
+        );
+      }
+      console.log(`[seed] default evergreen campaign for ${t.slug}`);
     }
 
     await client.query('COMMIT');

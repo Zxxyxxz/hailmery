@@ -13,5 +13,9 @@ compatibility_flags = ["nodejs_compat"]
 [observability]
 enabled = true
 
+# Scheduled jobs — see src/jobs/scheduler.ts (runMailSync).
+[triggers]
+crons = ["0 */6 * * *"]
+
 [vars]
 ENVIRONMENT = "development"

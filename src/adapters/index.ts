@@ -103,6 +103,7 @@ export type {
   SendGridCredentials,
   SendGridMailPayload,
   SendGridEvent,
+  SendGridContactInput,
   SendGridContactSyncResult,
   SendGridList,
 } from './sendgrid.js';

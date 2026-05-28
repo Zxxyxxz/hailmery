@@ -25,6 +25,7 @@ export interface HubSpotContact {
   lastname: string;
   lifecyclestage: string;
   hs_lead_status: string;
+  hs_email_optout: string;
 }
 
 export interface HubSpotContactsResult {
@@ -33,10 +34,12 @@ export interface HubSpotContactsResult {
 }
 
 export type HubSpotEventType =
+  | 'email_delivered'
   | 'email_opened'
   | 'email_clicked'
   | 'email_bounced'
-  | 'email_unsubscribed';
+  | 'email_unsubscribed'
+  | 'email_spam_reported';
 
 export interface HubSpotTimelineEvent {
   eventType: HubSpotEventType;
@@ -65,7 +68,7 @@ export class HubSpotAdapter implements ChannelAdapter {
     const params = new URLSearchParams();
     params.set(
       'properties',
-      'email,firstname,lastname,lifecyclestage,hs_lead_status',
+      'email,firstname,lastname,lifecyclestage,hs_lead_status,hs_email_optout',
     );
     if (options?.limit) params.set('limit', String(options.limit));
     if (options?.after) params.set('after', options.after);
@@ -88,9 +91,24 @@ export class HubSpotAdapter implements ChannelAdapter {
         lastname: r.properties.lastname ?? '',
         lifecyclestage: r.properties.lifecyclestage ?? '',
         hs_lead_status: r.properties.hs_lead_status ?? '',
+        hs_email_optout: r.properties.hs_email_optout ?? '',
       })),
       nextCursor: data.paging?.next?.after,
     };
+  }
+
+  async getContactByEmail(email: string): Promise<string | null> {
+    return getContactByEmail(this.token, email);
+  }
+
+  async createContact(properties: Record<string, string>): Promise<string> {
+    const res = await adapterFetch(`${BASE}/crm/v3/objects/contacts`, {
+      method: 'POST',
+      headers: this.hdrs(),
+      body: JSON.stringify({ properties }),
+    });
+    const data = (await res.json()) as { id: string };
+    return data.id;
   }
 
   async createTimelineEvent(

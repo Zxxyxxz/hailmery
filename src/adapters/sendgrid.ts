@@ -33,6 +33,13 @@ export interface SendGridEvent {
   [key: string]: unknown;
 }
 
+export interface SendGridContactInput {
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  custom_fields?: Record<string, string>;
+}
+
 export interface SendGridContactSyncResult {
   job_id: string;
 }
@@ -95,7 +102,7 @@ export class SendGridAdapter implements ChannelAdapter {
   }
 
   async syncContacts(
-    contacts: Array<{ email: string; first_name?: string; last_name?: string }>,
+    contacts: SendGridContactInput[],
   ): Promise<SendGridContactSyncResult> {
     const res = await adapterFetch(`${BASE}/marketing/contacts`, {
       method: 'PUT',
@@ -105,6 +112,18 @@ export class SendGridAdapter implements ChannelAdapter {
 
     const data = (await res.json()) as { job_id: string };
     return { job_id: data.job_id };
+  }
+
+  // Global unsubscribe list — emails SendGrid will never deliver to. Used by
+  // the sync bridge to propagate opt-outs back into HubSpot.
+  async getGlobalUnsubscribes(): Promise<string[]> {
+    const res = await adapterFetch(`${BASE}/suppression/unsubscribes`, {
+      method: 'GET',
+      headers: this.hdrs(),
+    });
+
+    const data = (await res.json()) as Array<{ email: string }>;
+    return (data ?? []).map((r) => r.email).filter(Boolean);
   }
 
   async getContactLists(): Promise<SendGridList[]> {

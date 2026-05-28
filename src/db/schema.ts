@@ -227,7 +227,7 @@ export const documentChunks = marketing.table('document_chunks', {
 export const contentDrafts = marketing.table('content_drafts', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
-  campaignId: uuid('campaign_id'),
+  campaignId: uuid('campaign_id').references(() => campaigns.id),
   siteId: uuid('site_id').notNull(),
   pillar: text('pillar'),
   channel: text('channel').notNull(),
@@ -272,6 +272,19 @@ export const contentMetrics = marketing.table('content_metrics', {
   draftIdx: index('content_metrics_draft_idx').on(t.draftId, t.window),
 }));
 
+export const syncLog = marketing.table('sync_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  direction: text('direction').notNull(),
+  contactsSynced: integer('contacts_synced').notNull().default(0),
+  eventsProcessed: integer('events_processed').notNull().default(0),
+  errors: jsonb('errors').notNull().default([]),
+  ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx: index('sync_log_tenant_idx').on(t.tenantId),
+  directionIdx: index('sync_log_direction_idx').on(t.tenantId, t.direction, t.ranAt),
+}));
+
 export const assets = marketing.table('assets', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
@@ -288,8 +301,16 @@ export const assets = marketing.table('assets', {
 // Type exports for downstream code
 // ──────────────────────────────────────────────────────────────────
 export type Tenant = typeof tenants.$inferSelect;
+export type TenantSecret = typeof tenantSecrets.$inferSelect;
+export type TenantUsage = typeof tenantUsage.$inferSelect;
 export type Site = typeof sites.$inferSelect;
 export type SiteConfig = typeof siteConfig.$inferSelect;
+export type Campaign = typeof campaigns.$inferSelect;
+export type Pillar = typeof pillars.$inferSelect;
 export type Document = typeof documents.$inferSelect;
 export type DocumentChunk = typeof documentChunks.$inferSelect;
 export type ContentDraft = typeof contentDrafts.$inferSelect;
+export type PublishLogEntry = typeof publishLog.$inferSelect;
+export type ContentMetric = typeof contentMetrics.$inferSelect;
+export type SyncLogEntry = typeof syncLog.$inferSelect;
+export type Asset = typeof assets.$inferSelect;

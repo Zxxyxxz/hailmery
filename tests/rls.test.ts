@@ -37,7 +37,7 @@ async function countAs(c: any, tenantId: string | null, bypass = false): Promise
     if (bypass) {
       await c.query(`SELECT set_config('app.rls_bypass', 'true', true)`);
     }
-    const r = await c.query<{ count: string }>(
+    const r = await c.query(
       `SELECT count(*)::text AS count FROM marketing.document_chunks`
     );
     return Number(r.rows[0]?.count ?? 0);
