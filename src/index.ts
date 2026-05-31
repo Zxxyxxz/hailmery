@@ -9,9 +9,11 @@
 
 import { Hono } from 'hono';
 import { html } from 'hono/html';
+import { cors } from 'hono/cors';
 import { makeDb } from './db/client.js';
 import { findTenantBySlug } from './lib/tenant.js';
 import { brandVoicePage, brandVoiceSave } from './routes/settings.js';
+import { api } from './routes/api.js';
 import { runMailSync } from './jobs/scheduler.js';
 import {
   processSendGridWebhookEvents,
@@ -34,6 +36,23 @@ type Env = {
 };
 
 const app = new Hono<{ Bindings: Env }>();
+
+// CORS for the dashboard dev server (Vite proxies /api in dev, but allow direct
+// cross-origin access too — e.g. the deployed Pages app hitting the Worker).
+app.use(
+  '/api/*',
+  cors({
+    origin: (origin) =>
+      /^https?:\/\/localhost:\d+$/.test(origin) || origin.endsWith('.pages.dev')
+        ? origin
+        : '',
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'X-Tenant-ID'],
+  }),
+);
+
+// Dashboard JSON API (approval queue, calendar, campaigns, settings).
+app.route('/api', api);
 
 app.get('/', async (c) => {
   return c.html(html`<!doctype html>

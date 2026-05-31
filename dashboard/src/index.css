@@ -1,0 +1,134 @@
+@import 'tailwindcss';
+
+/* ──────────────────────────────────────────────────────────────────
+   hailmery dashboard — design system
+   Matches the LeadOrch admin visual language: near-black canvas,
+   frosted glass surfaces, cyan→blue gradient accent, Inter type.
+   ────────────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-canvas: #0a0b0f;
+  --color-surface: #12131a;
+  --color-surface-2: #14151c;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    margin: 0;
+    background-color: #0a0b0f;
+    color: #f3f4f6;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  * {
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+}
+
+@layer components {
+  .glass {
+    background-color: rgb(18 19 26 / 0.8);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgb(255 255 255 / 0.06);
+    border-radius: 1rem;
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.2);
+  }
+  .glass-sm {
+    background-color: rgb(18 19 26 / 0.6);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgb(255 255 255 / 0.05);
+    border-radius: 0.75rem;
+  }
+  .gradient-text {
+    background-image: linear-gradient(to right, #22d3ee, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #9ca3af;
+    margin-bottom: 0.375rem;
+  }
+}
+
+/* Animations ported from the LeadOrch system */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-slide-up {
+  animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* DraftCard leave animation — collapse height + fade as it exits the queue */
+@keyframes card-exit {
+  from {
+    opacity: 1;
+    max-height: 900px;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    transform: translateX(40px) scale(0.96);
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+.animate-card-exit {
+  animation: card-exit 0.45s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  overflow: hidden;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -468px 0;
+  }
+  100% {
+    background-position: 468px 0;
+  }
+}
+
+/* Thin scrollbars on dark surfaces */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
