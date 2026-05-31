@@ -24,15 +24,16 @@ import { withTenantDb } from '../lib/tenant.js';
 export const IMAGE_TYPES = ['blog_header', 'social_square', 'email_header', 'ad_creative'] as const;
 export type ImageType = (typeof IMAGE_TYPES)[number];
 
-const ASPECT: Record<ImageType, { ratio: string; dims: string }> = {
+export const ASPECT: Record<ImageType, { ratio: string; dims: string }> = {
   blog_header: { ratio: '16:9', dims: '1200x630' },
   social_square: { ratio: '1:1', dims: '1080x1080' },
   email_header: { ratio: '3:1', dims: '600x200' },
   ad_creative: { ratio: '1:1', dims: '1080x1080' },
 };
 
-const IDEOGRAM_MODEL = 'V_3_0';
+const IDEOGRAM_MODEL = 'V_3'; // recorded in generation_params; V3 is implied by the endpoint
 const IDEOGRAM_STYLE = 'REALISTIC';
+const IDEOGRAM_RENDERING_SPEED = 'DEFAULT'; // FLASH | TURBO | DEFAULT | QUALITY
 const IMAGE_COST_CENTS = 6;
 
 /** Minimal shape of a Cloudflare R2 binding — enough for put(). */
@@ -188,7 +189,7 @@ export async function generateImage(opts: {
 
 // ── prompt construction (Haiku 4.5) ─────────────────────────────────────────
 
-async function buildIdeogramPrompt(args: {
+export async function buildIdeogramPrompt(args: {
   conceptText: string;
   channel: string;
   visualGuidelines: string;
@@ -201,13 +202,12 @@ async function buildIdeogramPrompt(args: {
     'Output ONLY the prompt text — no preamble, no quotes, no markdown.',
     '',
     'Non-negotiable style constraints for every prompt you write:',
-    '- Dark, near-black background.',
-    '- Purple-to-cyan gradient accents.',
+    '- Background and accent/gradient colors MUST come from the tenant visual guidelines below — use the exact hex codes given there. Do NOT invent colors or default to purple/cyan; if the guidelines specify a blue palette, the image is blue.',
     '- Technical / security aesthetic — abstract, modern, premium.',
     '- NO stock-photo clichés: no handshakes, no padlocks on keyboards, no generic blue globes, no hooded hackers, no binary-rain backgrounds.',
-    '- If any text appears in the image, it must be rendered in an Inter-style geometric sans-serif (Ideogram renders in-image text better than any other model — exploit that, keep text minimal and sharp).',
+    '- If any text appears in the image, render it in the tenant’s specified typeface (a geometric sans-serif when unspecified). Ideogram renders in-image text better than any other model — exploit that, keep text minimal and sharp.',
     '',
-    'Also honour the tenant visual guidelines provided, where they do not conflict with the constraints above.',
+    'The tenant visual guidelines below are authoritative for palette, background, and typography — follow them precisely.',
     'Describe a specific visual concept relevant to the content — composition, focal subject, lighting, depth. Be concrete and vivid in 60-110 words.',
     `End the prompt with the rendering note: "Aspect ratio ${args.ratio} (${args.dims}), high detail, crisp edges."`,
   ].join('\n');
@@ -243,17 +243,20 @@ interface IdeogramResponse {
 }
 
 async function callIdeogram(apiKey: string, prompt: string, aspectRatio: string): Promise<string> {
-  const res = await fetch('https://api.ideogram.ai/generate', {
+  // Ideogram 3.0 lives on a dedicated endpoint that takes multipart/form-data
+  // (not JSON) and spells the aspect ratio "16x9" — not "16:9" and not the
+  // legacy enum. The model is implied by the endpoint, so there is no `model`
+  // field. We omit Content-Type so fetch sets the multipart boundary itself.
+  const form = new FormData();
+  form.set('prompt', prompt);
+  form.set('aspect_ratio', aspectRatio.replace(':', 'x'));
+  form.set('rendering_speed', IDEOGRAM_RENDERING_SPEED);
+  form.set('style_type', IDEOGRAM_STYLE);
+
+  const res = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
     method: 'POST',
-    headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      image_request: {
-        prompt,
-        aspect_ratio: aspectRatio,
-        model: IDEOGRAM_MODEL,
-        style_type: IDEOGRAM_STYLE,
-      },
-    }),
+    headers: { 'Api-Key': apiKey },
+    body: form,
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -267,7 +270,7 @@ async function callIdeogram(apiKey: string, prompt: string, aspectRatio: string)
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function conceptFromPayload(payload: Record<string, unknown>, channel: string): string {
+export function conceptFromPayload(payload: Record<string, unknown>, channel: string): string {
   const pick = (k: string): string => (typeof payload[k] === 'string' ? (payload[k] as string) : '');
   const parts = [pick('title'), pick('subject'), pick('topic'), pick('text'), pick('body')].filter(Boolean);
   const text = parts.join('\n').trim();
