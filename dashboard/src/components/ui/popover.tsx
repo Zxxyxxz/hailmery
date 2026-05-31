@@ -36,6 +36,7 @@ export function Popover({
       <div onClick={() => setOpen((o) => !o)}>{trigger}</div>
       {open && (
         <div
+          data-popover-panel=""
           className={cn(
             'glass animate-fade-in absolute z-40 mt-2 min-w-[15rem] p-3',
             align === 'end' ? 'right-0' : 'left-0',

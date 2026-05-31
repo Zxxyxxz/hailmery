@@ -116,7 +116,13 @@ export function DraftCard({
   return (
     <div
       className={cn(
-        'glass overflow-hidden p-5',
+        'glass relative overflow-hidden p-5',
+        // An open Popover panel renders below the action row, outside the
+        // card's box. `overflow-hidden` was clipping it to nothing, and the
+        // card's backdrop-filter stacking context let the *next* card paint
+        // over it — so the Dismiss/Approve popovers never appeared. When a
+        // panel is mounted, let it overflow and lift the card above siblings.
+        'has-[[data-popover-panel]]:z-30 has-[[data-popover-panel]]:overflow-visible',
         exiting && 'animate-card-exit',
       )}
     >
@@ -257,27 +263,38 @@ export function DraftCard({
                 {({ close }) => (
                   <div className="space-y-3">
                     <div className="text-xs font-medium text-gray-400">
-                      Confirm publish time
+                      Publish at
                     </div>
                     <Input
                       type="datetime-local"
                       value={scheduleAt}
                       onChange={(e) => setScheduleAt(e.target.value)}
                     />
-                    <Button
-                      variant="success"
-                      size="sm"
-                      className="w-full"
-                      disabled={patch.isPending}
-                      onClick={() => handleApprove(close)}
-                    >
-                      {patch.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Check className="h-4 w-4" />
-                      )}
-                      Approve & schedule
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="success"
+                        size="sm"
+                        className="flex-1"
+                        disabled={patch.isPending}
+                        onClick={() => handleApprove(close)}
+                      >
+                        {patch.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
+                        Confirm
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1"
+                        disabled={patch.isPending}
+                        onClick={close}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 )}
               </Popover>
