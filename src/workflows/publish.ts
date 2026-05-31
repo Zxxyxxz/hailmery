@@ -265,6 +265,7 @@ export async function publishDraft(env: PipelineEnv, draft: DueDraft): Promise<P
     channel: normalizeChannel(draft.channel),
     payload: draft.payload,
     assets: draft.assets,
+    publishAt: draft.publishAt,
   } as unknown as ContentDraft;
 
   try {

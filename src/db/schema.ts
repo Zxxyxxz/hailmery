@@ -108,6 +108,9 @@ export const tenantSecrets = marketing.table('tenant_secrets', {
   platform: text('platform').notNull(),
   encryptedAccessToken: text('encrypted_access_token'),
   encryptedRefreshToken: text('encrypted_refresh_token'),
+  // Encrypted JSON, channel -> provider profile/channel id (Buffer). Stored
+  // alongside the access token so a tenant's publish targets resolve offline.
+  encryptedProfileMap: text('encrypted_profile_map'),
   tokenExpiresAt: timestamp('token_expires_at', { withTimezone: true }),
   scopes: text('scopes').array(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

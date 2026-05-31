@@ -20,11 +20,14 @@ export interface LoadedSecret {
   refreshToken: string | null;
   expiresAt: Date | null;
   scopes: string[] | null;
+  // Decrypted channel -> profile/channel id map (Buffer). null when unset.
+  profileMap: Record<string, string> | null;
 }
 
 interface SecretRow extends Record<string, unknown> {
   encrypted_access_token: string | null;
   encrypted_refresh_token: string | null;
+  encrypted_profile_map: string | null;
   token_expires_at: string | null;
   scopes: string[] | null;
 }
@@ -63,7 +66,8 @@ export async function loadSecret(
 ): Promise<LoadedSecret | null> {
   const row = await withTenantDb(db, tenantId, async (tx) => {
     const r = await tx.execute<SecretRow>(sql`
-      SELECT encrypted_access_token, encrypted_refresh_token, token_expires_at, scopes
+      SELECT encrypted_access_token, encrypted_refresh_token, encrypted_profile_map,
+             token_expires_at, scopes
       FROM marketing.tenant_secrets
       WHERE tenant_id = ${tenantId} AND platform = ${platform}
       LIMIT 1
@@ -71,6 +75,15 @@ export async function loadSecret(
     return r.rows[0] ?? null;
   });
   if (!row || !row.encrypted_access_token) return null;
+
+  let profileMap: Record<string, string> | null = null;
+  if (row.encrypted_profile_map) {
+    try {
+      profileMap = JSON.parse(await decryptSecret(row.encrypted_profile_map, secretsKey));
+    } catch {
+      profileMap = null; // malformed/rotated key — treat as no map, publish will error clearly
+    }
+  }
 
   return {
     platform,
@@ -80,22 +93,23 @@ export async function loadSecret(
       : null,
     expiresAt: row.token_expires_at ? new Date(row.token_expires_at) : null,
     scopes: row.scopes ?? null,
+    profileMap,
   };
 }
 
 /**
- * Build the credential object an adapter constructor expects. The extra fields
- * (Buffer profile IDs, Wix site id) are NOT in tenant_secrets yet in V0/V1 — we
- * pass through whatever the (optional) `extra` argument supplies and otherwise
- * leave them empty. A Buffer publish with no profile IDs will throw inside the
- * adapter; that surfaces as a per-draft failed_reason rather than a crash.
+ * Build the credential object an adapter constructor expects. Buffer profile
+ * IDs come from the tenant's encrypted profile map (tenant_secrets); other extra
+ * fields (e.g. Wix site id) are passed through via the optional `extra` argument
+ * and otherwise left empty. A Buffer publish with no profile id for the channel
+ * throws inside the adapter; that surfaces as a per-draft failed_reason.
  */
 function buildCredentials(secret: LoadedSecret, extra?: Record<string, unknown>) {
   return {
     accessToken: secret.accessToken,
     refreshToken: secret.refreshToken ?? undefined,
     extra: {
-      ...(secret.platform === 'buffer' ? { profileIds: {} } : {}),
+      ...(secret.platform === 'buffer' ? { profileIds: secret.profileMap ?? {} } : {}),
       ...(extra ?? {}),
     },
   };
