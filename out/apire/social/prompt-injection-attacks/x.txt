@@ -1,0 +1,1 @@
+97% of AI breaches hit systems without proper access controls. Prompt injection stays OWASP's #1 AI risk — direct manipulation designed to override system instructions entirely. Layer 2 semantic analysis catches intent, not just keywords. #NIS2

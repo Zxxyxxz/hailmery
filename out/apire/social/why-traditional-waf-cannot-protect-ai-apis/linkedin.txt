@@ -1,0 +1,19 @@
+Most security teams defending AI APIs are using the wrong tool. A WAF was built for HTTP exploits — not for what happens inside a prompt.
+
+A WAF inspects HTTP structure: headers, parameters, known malicious signatures. It has no concept of semantic intent. It cannot tell the difference between a legitimate user asking a question and an adversarial input designed to exfiltrate data through the model's own response.
+
+Prompt injection doesn't look like an SQL injection. Jailbreaks don't carry a CVE. Model inversion attacks arrive as syntactically valid, well-formed requests.
+
+The WAF passes them all.
+
+This matters because 86% of companies deploying AI have already experienced an AI security incident. The attack surface isn't the HTTP layer — it's the 27+ threat vectors that operate at the semantic level: prompt injection, social engineering, context manipulation, adversarial inputs, and encoding-obfuscated payloads across 26+ encoding attack vectors including Base64, Unicode homoglyphs, bidirectional text overrides, and nested encoding up to three levels deep.
+
+Traditional DLP compounds the problem. It scans for known patterns in plaintext. It has no mechanism to intercept data that a model is being manipulated into volunteering in its response.
+
+Under NIS2, 160,000+ entities are now required to demonstrate active risk management of their digital infrastructure — AI APIs included. "We had a WAF" is not a defensible audit position when the attack vector bypasses the transport layer entirely.
+
+AI API traffic needs inspection at the semantic layer, across every request, with sub-millisecond latency impact. That is a fundamentally different problem than web application security.
+
+What's your current strategy for covering the gap between your WAF and your AI APIs?
+
+#NIS2 #AISecuity #PromptInjection

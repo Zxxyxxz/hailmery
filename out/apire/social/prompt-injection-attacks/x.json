@@ -1,0 +1,29 @@
+{
+  "tenant": "apire",
+  "topic": "prompt injection attacks",
+  "draftId": "6862a29a-205f-480d-aa2d-e09ec03c47f4",
+  "channel": "x",
+  "channelLabel": "X (Twitter)",
+  "text": "97% of AI breaches hit systems without proper access controls. Prompt injection stays OWASP's #1 AI risk — direct manipulation designed to override system instructions entirely. Layer 2 semantic analysis catches intent, not just keywords. #NIS2",
+  "charCount": 244,
+  "wordCount": 36,
+  "guardianScore": 1,
+  "guardianNotes": "All claims are supported by corpus. Statistics, threat definitions, and Layer 2 capabilities are verified.",
+  "flaggedCount": 0,
+  "sources": [
+    "threat-coverage.md",
+    "five-layer-architecture.md",
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "deployment-and-integration.md",
+    "five-layer-architecture.md",
+    "brand-voice.md",
+    "threat-coverage.md",
+    "threat-coverage.md"
+  ],
+  "usage": {
+    "input_tokens": 5061,
+    "output_tokens": 58,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  }
+}

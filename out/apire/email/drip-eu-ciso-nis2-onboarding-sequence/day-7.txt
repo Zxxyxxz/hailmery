@@ -1,0 +1,46 @@
+APIRE — AI Security Without Friction
+Email 3 of 5
+
+────────────────────────────────────────
+Traditional DLP sees files and endpoints.
+It does not see what your AI is being asked.
+────────────────────────────────────────
+
+AI conversational traffic — the prompts entering your LLM stack and the completions leaving it — is a distinct attack surface that predates none of your existing controls. The category of protection this surface demands is not an extension of DLP, endpoint security, or WAF. It is a purpose-built discipline: inline governance of AI-layer traffic, in real time, before data moves.
+
+
+WHY EXISTING CONTROLS FALL SHORT
+─────────────────────────────────
+Traditional DLP was designed for structured data at rest or in motion across known channels — email, cloud storage, endpoints. It was not built to parse the semantic content of a conversational prompt, detect a prompt injection attack embedded in a document your AI is summarising, or produce the audit trail NIS2 incident reporting requires for AI systems. The EU AI Act adds a further layer: obligations on data governance, human oversight, and transparency that DLP frameworks do not address.
+
+
+THE SURFACE AREA DLP LEAVES EXPOSED
+─────────────────────────────────────
+8.5% of prompts submitted to enterprise AI systems contain sensitive data. 98% of employees use unsanctioned AI tools at some point. Each exchange is a potential exfiltration path, a vector for prompt injection, or a compliance event requiring documentation. None of those interactions appear in a DLP log. None are inspected at the point of transmission to an LLM. And under NIS2, the 160,000+ entities in scope cannot report incidents they never detected.
+
+
+WHAT THIS CATEGORY OF CONTROL MUST DO
+───────────────────────────────────────
+Effective AI-layer governance operates inline — sitting between your applications and AI providers, inspecting every prompt and completion before data moves. It must block threats in real time across a threat surface that includes prompt injection, sensitive data exfiltration, and model manipulation. It must apply policy without storing the data it processes, so that the control layer itself does not become a compliance liability. And it must produce audit-ready records that satisfy NIS2 incident reporting requirements — not as a post-hoc export, but as a continuous output of normal operation.
+
+
+THE SCALE OF THE GAP
+─────────────────────
+- 89% of enterprises lack purpose-built AI security controls.
+- A $4.2M average AI breach cost — $670,000 higher when shadow AI is involved.
+- AI-specific attacks increased 67% year-on-year.
+- NIS2 fines reach €10 million or 2% of global turnover — whichever is higher — for entities that cannot demonstrate adequate controls.
+
+
+In our next email we'll show you exactly what a purpose-built AI security platform does at each layer — and how it maps to the specific NIS2 and EU AI Act obligations your team is accountable for. Before then, the question worth answering internally: do you currently have a log of every sensitive data item that entered your LLM stack in the last 30 days?
+
+
+→ Assess your AI security maturity: https://apire.io/ai-security-maturity
+
+
+────────────────────────────────────────
+APIRE · [Physical address placeholder] · EU
+
+You received this because you subscribed to APIRE security intelligence.
+Unsubscribe: [unsubscribe_url]
+Manage preferences: [preferences_url]

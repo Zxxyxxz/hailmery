@@ -1,0 +1,29 @@
+{
+  "tenant": "apire",
+  "topic": "Why traditional WAF cannot protect AI APIs",
+  "draftId": "912341e7-009e-4e2e-b9e1-0851d772e4b8",
+  "channel": "linkedin",
+  "channelLabel": "LinkedIn",
+  "text": "Most security teams defending AI APIs are using the wrong tool. A WAF was built for HTTP exploits — not for what happens inside a prompt.\n\nA WAF inspects HTTP structure: headers, parameters, known malicious signatures. It has no concept of semantic intent. It cannot tell the difference between a legitimate user asking a question and an adversarial input designed to exfiltrate data through the model's own response.\n\nPrompt injection doesn't look like an SQL injection. Jailbreaks don't carry a CVE. Model inversion attacks arrive as syntactically valid, well-formed requests.\n\nThe WAF passes them all.\n\nThis matters because 86% of companies deploying AI have already experienced an AI security incident. The attack surface isn't the HTTP layer — it's the 27+ threat vectors that operate at the semantic level: prompt injection, social engineering, context manipulation, adversarial inputs, and encoding-obfuscated payloads across 26+ encoding attack vectors including Base64, Unicode homoglyphs, bidirectional text overrides, and nested encoding up to three levels deep.\n\nTraditional DLP compounds the problem. It scans for known patterns in plaintext. It has no mechanism to intercept data that a model is being manipulated into volunteering in its response.\n\nUnder NIS2, 160,000+ entities are now required to demonstrate active risk management of their digital infrastructure — AI APIs included. \"We had a WAF\" is not a defensible audit position when the attack vector bypasses the transport layer entirely.\n\nAI API traffic needs inspection at the semantic layer, across every request, with sub-millisecond latency impact. That is a fundamentally different problem than web application security.\n\nWhat's your current strategy for covering the gap between your WAF and your AI APIs?\n\n#NIS2 #AISecuity #PromptInjection",
+  "charCount": 1821,
+  "wordCount": 273,
+  "guardianScore": 0.92,
+  "guardianNotes": "Draft is well-grounded in CORPUS facts (86%, 160k NIS2, 26+ encoding vectors). Minor imprecision: '27+ threat vectors' conflates threat categories with encoding vectors; should be clearer that 27+ is the aggregate of content safety + AI-specific threat categories. Overall strong positioning without material unsupported claims.",
+  "flaggedCount": 4,
+  "sources": [
+    "PRODUCT-FACTS-EXTRACTED.md",
+    "threat-coverage.md",
+    "deployment-and-integration.md",
+    "positioning-and-promise.md",
+    "five-layer-architecture.md",
+    "five-layer-architecture.md",
+    "competitive-landscape.md",
+    "PRODUCT-FACTS-EXTRACTED.md"
+  ],
+  "usage": {
+    "input_tokens": 5516,
+    "output_tokens": 408,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0
+  }
+}

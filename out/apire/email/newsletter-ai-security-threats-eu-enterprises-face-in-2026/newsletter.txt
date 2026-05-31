@@ -1,0 +1,57 @@
+APIRE SECURITY BRIEFING — 2026 Threat Intelligence
+===================================================
+
+THE AI ATTACK SURFACE YOUR ENTERPRISE WASN'T FULLY DEFENDING IN 2025
+
+AI-specific attacks increased 67% year-over-year. With 90% of EU organisations now implementing or planning LLM use cases, the attack surface has grown faster than the governance frameworks meant to contain it. The regulatory window is closing: NIS2 enforcement is active, and EU AI Act requirements are taking effect through 2025–2026.
+
+BY THE NUMBERS
+--------------
+• 2,500+ daily AI threats observed
+• $4.2M average cost per AI breach (+45% year-over-year)
+• 89% of enterprises lack purpose-built AI security
+
+
+THE THREAT CATEGORIES DRIVING BREACH COSTS IN 2026
+----------------------------------------------------
+Prompt injection remains the #1 OWASP AI security risk. It is not a novel edge case — it is the dominant attack pattern against enterprise LLM deployments. Alongside it, jailbreaking, data exfiltration, social engineering, and model inversion make up the five core AI threat categories that security controls must address by design.
+
+Beyond these five, eight advanced threat categories — including adversarial attacks, IP theft, business logic attacks, and context attacks — are documented and actively observed. Coordinated multi-vector campaigns are especially difficult to detect: when an attacker combines prompt injection with encoding obfuscation, a single-category detector will miss it.
+
+Encoding obfuscation alone covers more than 26 documented attack vectors — from Base64 and Unicode manipulation to null byte injection and bidirectional text override — running up to three levels of nested encoding recursion.
+
+
+SHADOW AI IS NOT A USER BEHAVIOUR PROBLEM — IT IS A STRUCTURAL CONTROL GAP
+---------------------------------------------------------------------------
+98% of employees use unsanctioned AI applications. 75% of organisations running shadow AI have no governance policies in place. 8.5% of all prompts contain sensitive information — PII, credentials, or internal data.
+
+The breach cost differential is quantifiable: organisations using shadow AI see breach costs $670,000 higher than those without. Traditional DLP was designed for file movement and email. It does not inspect prompt content, does not operate inline within an LLM request pipeline, and does not enforce policy at the point of AI model interaction.
+
+
+NIS2 AND THE EU AI ACT: WHAT THE ENFORCEMENT TIMELINE MEANS FOR YOUR CONTROLS
+------------------------------------------------------------------------------
+NIS2 applies to 160,000+ entities across the EU. Non-compliance carries fines up to €10 million or 2% of global turnover. The directive requires demonstrable incident prevention and audit-ready reporting — neither of which is satisfied by post-hoc logging alone.
+
+The EU AI Act introduces additional obligations for high-risk AI systems: data governance controls (Article 10), human oversight mechanisms (Article 14), and cybersecurity robustness (Article 15). 68% of European businesses report difficulty understanding their EU AI Act responsibilities.
+
+
+WHAT ADEQUATE AI SECURITY CONTROLS LOOK LIKE IN 2026
+-----------------------------------------------------
+Adequate controls operate inline — inspecting every request through a structured security pipeline before it reaches an AI provider, and every response before it reaches the user. They cover content safety, semantic threat detection across 27+ threat types, and data leakage prevention with 950+ pre-configured rules for PII, PHI, PCI, credentials, and API keys — at sub-millisecond latency, with zero code changes to existing AI integrations.
+
+Controls that only log events after the fact do not constitute incident prevention under NIS2. Controls that rely on single-category detection will miss coordinated multi-vector attacks. 97% of AI-related breaches involved systems lacking proper access controls.
+
+
+SEE EXACTLY WHICH THREATS YOUR CURRENT STACK DOES NOT COVER
+------------------------------------------------------------
+APIRE deploys in under 5 minutes with zero code changes to your existing AI integrations. Request a technical walkthrough with one of our security architects — bring your current threat model and we will map the gaps against 27+ documented AI threat categories and your NIS2 and EU AI Act obligations.
+
+Request a technical walkthrough: https://apire.io
+
+
+---
+You are receiving this because you subscribed to APIRE security briefings.
+Unsubscribe: [UNSUBSCRIBE_LINK]
+Update preferences: [PREFERENCES_LINK]
+
+APIRE · [PHYSICAL ADDRESS PLACEHOLDER] · EU

@@ -1,0 +1,70 @@
+APIRE — AI Security Intelligence
+Email 2 of 5 | Day 3
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The exposure was already there. The data just makes it harder to look away.
+
+Before any conversation about solutions, the threat picture deserves a clear read. The statistics coming out of AI security research in 2025 describe a structural gap — not an edge case — in how European enterprises are running generative AI today.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+THE INCIDENT RATE
+─────────────────
+
+86% of companies experienced an AI security incident last year.
+
+That figure is a reported rate across organisations that have already deployed AI in production. At the same time, AI-specific attacks are growing at 67% year-on-year, with 2,500+ distinct threats observed daily.
+
+The volume is not the only problem. The character of the threat has changed. Prompt injection, data exfiltration through model outputs, and indirect attacks via compromised data sources are not detectable by signature-based or traditional DLP tooling — which was built for file transfers and email, not conversational AI traffic.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHAT A BREACH COSTS
+────────────────────
+
+$4.2M — Average cost of an AI-related breach
++$670,000 — Additional exposure when shadow AI is involved
+
+Breach costs in AI environments are rising at 45% annually. The shadow AI variable is particularly relevant: 98% of employees use unsanctioned AI tools, and 75% of organisations using shadow AI have no governance framework in place to control what data those tools are processing.
+
+Under NIS2, those same breaches — if they affect essential or important entities — carry fines of up to €10 million or 2% of global turnover, whichever is higher. Financial exposure from a single uncontrolled AI incident can run across both columns simultaneously.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+THE GOVERNANCE GAP
+───────────────────
+
+90% of organisations are currently implementing or planning LLM use cases. 89% of those enterprises have no purpose-built AI security controls in place. That gap — between deployment velocity and security posture — is where the 2,500+ daily threats find their opening.
+
+Key figures:
+- 68% of European businesses struggle to understand EU AI Act responsibilities
+- 40% of EU IT spending already goes toward compliance costs
+- 8.5% of prompts entering AI systems contain sensitive data
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY TRADITIONAL DLP DOESN'T CLOSE THIS
+────────────────────────────────────────
+
+Traditional DLP was built for structured data movement across known channels. It does not inspect conversational AI traffic. It does not address NIS2 incident reporting requirements for AI systems. It has no framework for the EU AI Act.
+
+The 160,000+ EU entities inside NIS2's scope are being asked to demonstrate active security controls and audit-ready incident reporting across their AI stack — using tooling that was never designed to see that traffic at all.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHAT'S NEXT
+────────────
+
+In the next email, we'll map exactly which points in your AI request pipeline these threats enter — and what controls belong at each layer.
+
+If you'd rather read the full threat landscape now, the AI Security Maturity Model assessment walks through all 27+ threat categories with a gap analysis specific to your architecture.
+
+→ Download the Maturity Assessment: [LINK]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+APIRE · [Physical Address Placeholder] · EU
+
+You're receiving this because you opted in to APIRE security communications.
+Unsubscribe: [UNSUBSCRIBE LINK]

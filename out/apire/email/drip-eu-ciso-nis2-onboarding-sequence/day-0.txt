@@ -1,0 +1,56 @@
+APIRE — AI Security
+
+─────────────────────────────────────────────
+
+Your AI deployments are generating security events NIS2 requires you to report. Most organisations have no record of them.
+
+─────────────────────────────────────────────
+
+Last year, 86% of companies experienced AI security incidents. The same organisations are now subject to NIS2 fines of up to €10 million or 2% of global turnover — whichever is higher — for failures in incident detection and reporting.
+
+─────────────────────────────────────────────
+THE SCALE OF THE PROBLEM
+─────────────────────────────────────────────
+
+AI-specific attacks increased 67% year-over-year. Today, 2,500+ distinct AI threats are observed daily. The average cost of an AI-related breach has reached $4.2 million — and that figure is growing 45% annually.
+
+These are not theoretical risks. They are active threat vectors running through the same LLM infrastructure your teams deployed to meet product deadlines.
+
+─────────────────────────────────────────────
+THE GOVERNANCE GAP TRADITIONAL DLP DOESN'T CLOSE
+─────────────────────────────────────────────
+
+Traditional DLP was built for file transfers and email. It was not built for conversational AI traffic — the prompt layer where sensitive data now moves at volume. Research shows 8.5% of prompts contain sensitive data, yet 89% of enterprises have no purpose-built controls for AI-specific data flows.
+
+Traditional DLP also does not address the EU AI Act's Article 10 data governance requirements, nor does it generate the audit trails NIS2 incident reporting demands for AI systems.
+
+─────────────────────────────────────────────
+SHADOW AI COMPOUNDS EVERY RISK IN SCOPE
+─────────────────────────────────────────────
+
+98% of employees use unsanctioned AI tools. Among the organisations that know about it, 75% have no governance framework covering those tools. Each unsanctioned deployment is an undocumented data processor — one your DPO cannot map and your SOC cannot monitor.
+
+For the 160,000+ entities now in scope under NIS2, that gap is not an operational inconvenience. It is a direct compliance exposure with a defined penalty ceiling.
+
+─────────────────────────────────────────────
+WHAT THE REGULATORY FRAME REQUIRES NEXT
+─────────────────────────────────────────────
+
+NIS2 mandates active incident detection, structured reporting timelines, and demonstrable technical controls. The EU AI Act adds data governance obligations at the model-input level. These two frameworks now overlap directly with every LLM integration in your production environment.
+
+68% of European businesses report they struggle to understand their EU AI Act responsibilities. That uncertainty does not delay enforcement dates.
+
+─────────────────────────────────────────────
+
+Over the next four emails, we'll map exactly where these exposures appear in a typical EU enterprise AI stack — and what controls address each layer under NIS2 and the EU AI Act.
+
+Start with the threat picture. Download the AI threat reference to see what 27+ attack categories look like at the prompt layer.
+
+→ Read the AI Threat Breakdown: [LINK]
+
+─────────────────────────────────────────────
+
+APIRE · [Physical address placeholder] · EU
+
+You received this because you opted in at apire.io or a related event.
+Unsubscribe: [LINK] · Manage preferences: [LINK]
