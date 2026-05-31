@@ -236,6 +236,7 @@ export const contentDrafts = marketing.table('content_drafts', {
   assets: jsonb('assets').notNull().default({}),
   scoreHuman: integer('score_human'),
   dismissReason: text('dismiss_reason'),
+  failedReason: text('failed_reason'),
   publishAt: timestamp('publish_at', { withTimezone: true }),
   publishedRef: text('published_ref'),
   costCents: integer('cost_cents').notNull().default(0),
@@ -297,6 +298,25 @@ export const assets = marketing.table('assets', {
   tenantIdx: index('assets_tenant_idx').on(t.tenantId),
 }));
 
+// Delayed metrics-fetch work queue. After a draft is published the publish
+// pipeline enqueues one row per fetch window (1h + 24h); the metrics job
+// (Chunk 7) drains rows whose fetch_at <= now() and flips `fetched`. In V2
+// this is backed by a Cloudflare Queue; the table is the durable record either
+// way so a missed tick never drops a fetch.
+export const metricsQueue = marketing.table('metrics_queue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  draftId: uuid('draft_id').notNull().references(() => contentDrafts.id),
+  fetchAt: timestamp('fetch_at', { withTimezone: true }).notNull(),
+  window: metricsWindow('window').notNull(),
+  fetched: boolean('fetched').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx: index('metrics_queue_tenant_idx').on(t.tenantId),
+  dueIdx: index('metrics_queue_due_idx').on(t.fetchAt),
+  draftIdx: index('metrics_queue_draft_idx').on(t.draftId),
+}));
+
 // ──────────────────────────────────────────────────────────────────
 // Type exports for downstream code
 // ──────────────────────────────────────────────────────────────────
@@ -314,3 +334,4 @@ export type PublishLogEntry = typeof publishLog.$inferSelect;
 export type ContentMetric = typeof contentMetrics.$inferSelect;
 export type SyncLogEntry = typeof syncLog.$inferSelect;
 export type Asset = typeof assets.$inferSelect;
+export type MetricsQueueEntry = typeof metricsQueue.$inferSelect;

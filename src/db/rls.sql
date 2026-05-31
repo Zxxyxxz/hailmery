@@ -7,6 +7,38 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_uuid()
 
+-- 1b. Pipeline schema additions (Chunk 6 — scheduling/publish).
+--     Idempotent so `pnpm db:migrate` provisions them WITHOUT a destructive
+--     `db:push` that would drop and recreate policies. Drizzle's schema.ts is
+--     still the source of truth + types; this mirrors the diff for the migrate
+--     path. Both run BEFORE the RLS loops below so the new table picks up the
+--     uniform tenant_isolation policy automatically.
+
+-- content_drafts.failed_reason — set when a publish attempt fails (no retry).
+ALTER TABLE IF EXISTS marketing.content_drafts
+  ADD COLUMN IF NOT EXISTS failed_reason text;
+
+-- metrics_window enum (already created by drizzle-kit for content_metrics, but
+-- guard so the migrate path is self-contained on a fresh branch).
+DO $$ BEGIN
+  CREATE TYPE marketing.metrics_window AS ENUM ('1h', '24h', '7d', '30d');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- metrics_queue — delayed metrics-fetch work queue (1h / 24h after publish).
+CREATE TABLE IF NOT EXISTS marketing.metrics_queue (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   uuid NOT NULL,
+  draft_id    uuid NOT NULL REFERENCES marketing.content_drafts(id),
+  fetch_at    timestamptz NOT NULL,
+  "window"    marketing.metrics_window NOT NULL,
+  fetched     boolean NOT NULL DEFAULT false,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS metrics_queue_tenant_idx ON marketing.metrics_queue (tenant_id);
+CREATE INDEX IF NOT EXISTS metrics_queue_due_idx    ON marketing.metrics_queue (fetch_at) WHERE fetched = false;
+CREATE INDEX IF NOT EXISTS metrics_queue_draft_idx  ON marketing.metrics_queue (draft_id, "window");
+
 -- 2. HNSW index for fast cosine ANN on document_chunks.embedding.
 --    Cosine is what text-embedding-3-small ships normalized for.
 --    Only run if the table actually exists (lets us call this migration

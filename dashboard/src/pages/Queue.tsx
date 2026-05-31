@@ -1,6 +1,11 @@
 import { useMemo } from 'react'
-import { PartyPopper, Sparkles, AlertTriangle } from 'lucide-react'
-import { useDrafts } from '@/lib/queries'
+import { PartyPopper, Sparkles, AlertTriangle, Loader2 } from 'lucide-react'
+import {
+  useDrafts,
+  useCampaigns,
+  useGenerate,
+  useQueueStatus,
+} from '@/lib/queries'
 import { useTenant } from '@/lib/tenant-context'
 import { DraftCard } from '@/components/DraftCard'
 import { Button } from '@/components/ui/button'
@@ -11,6 +16,20 @@ export default function Queue() {
   const { data: drafts, isLoading, isError, error } = useDrafts({
     status: 'pending_review',
   })
+  const { data: campaigns } = useCampaigns()
+  const { data: stats } = useQueueStatus()
+  const generate = useGenerate()
+
+  // The "Generate more content" button tops up the default evergreen campaign.
+  const evergreenId = useMemo(
+    () => campaigns?.find((c) => c.type === 'evergreen')?.id ?? null,
+    [campaigns],
+  )
+
+  function handleGenerate() {
+    if (!evergreenId) return
+    generate.mutate({ campaignId: evergreenId, triggerReason: 'manual' })
+  }
 
   const sorted = useMemo(() => {
     if (!drafts) return []
@@ -31,13 +50,38 @@ export default function Queue() {
             {current ? ` · ${current.name}` : ''}
           </p>
         </div>
-        {sorted.length > 0 && (
-          <div className="text-sm text-gray-500">
-            <span className="font-semibold text-cyan-400">{sorted.length}</span>{' '}
-            pending
-          </div>
-        )}
+        <Button
+          variant="info"
+          size="sm"
+          onClick={handleGenerate}
+          disabled={!evergreenId || generate.isPending}
+        >
+          {generate.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          Generate more
+        </Button>
       </header>
+
+      {/* Stats bar */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <StatCard label="Pending" value={stats.pending} tint="text-cyan-400" />
+          <StatCard label="Approved" value={stats.approved} tint="text-emerald-400" />
+          <StatCard label="Scheduled" value={stats.scheduled} tint="text-blue-400" />
+          <StatCard label="Published today" value={stats.published_today} tint="text-violet-400" />
+          <StatCard label="Failed" value={stats.failed} tint="text-red-400" />
+        </div>
+      )}
+
+      {generate.isError && (
+        <div className="glass-sm flex items-center gap-3 border-red-500/20 p-4 text-sm text-red-300">
+          <AlertTriangle className="h-5 w-5" />
+          Generation failed: {(generate.error as Error)?.message ?? 'unknown error'}
+        </div>
+      )}
 
       {isLoading && <QueueSkeleton />}
 
@@ -48,7 +92,13 @@ export default function Queue() {
         </div>
       )}
 
-      {!isLoading && !isError && sorted.length === 0 && <EmptyState />}
+      {!isLoading && !isError && sorted.length === 0 && (
+        <EmptyState
+          onGenerate={handleGenerate}
+          canGenerate={!!evergreenId}
+          generating={generate.isPending}
+        />
+      )}
 
       {!isLoading && !isError && sorted.length > 0 && (
         <div className="space-y-4">
@@ -61,7 +111,24 @@ export default function Queue() {
   )
 }
 
-function EmptyState() {
+function StatCard({ label, value, tint }: { label: string; value: number; tint: string }) {
+  return (
+    <div className="glass-sm px-4 py-3">
+      <div className={`text-2xl font-bold ${tint}`}>{value}</div>
+      <div className="mt-0.5 text-xs text-gray-500">{label}</div>
+    </div>
+  )
+}
+
+function EmptyState({
+  onGenerate,
+  canGenerate,
+  generating,
+}: {
+  onGenerate: () => void
+  canGenerate: boolean
+  generating: boolean
+}) {
   return (
     <div className="glass flex flex-col items-center justify-center px-6 py-20 text-center">
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20">
@@ -74,8 +141,12 @@ function EmptyState() {
         Nothing is waiting for review. Generate the next batch of drafts to keep
         the calendar full.
       </p>
-      <Button className="mt-6">
-        <Sparkles className="h-4 w-4" />
+      <Button className="mt-6" onClick={onGenerate} disabled={!canGenerate || generating}>
+        {generating ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Sparkles className="h-4 w-4" />
+        )}
         Generate more content
       </Button>
     </div>

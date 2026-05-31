@@ -14,13 +14,22 @@ import { sql } from 'drizzle-orm';
 import { makeDb } from '../db/client.js';
 import { withTenantDb, assertUuid } from '../lib/tenant.js';
 import { brandGuardian } from '../agents/guardian.js';
+import { runGenerationPipeline } from '../workflows/generation.js';
+import { publishSingleDraft } from '../workflows/publish.js';
+import type { PipelineEnv, GenerationParams, TriggerReason } from '../workflows/types.js';
 
 type ApiEnv = {
   DATABASE_URL: string;
   ANTHROPIC_API_KEY: string;
   OPENAI_API_KEY: string;
   SECRETS_KEY: string;
+  IDEOGRAM_API_KEY?: string;
+  R2_PUBLIC_BASE_URL?: string;
+  GENERATION_WORKFLOW?: import('../workflows/types.js').WorkflowBinding;
+  PUBLISH_WORKFLOW?: import('../workflows/types.js').WorkflowBinding;
 };
+
+const TRIGGER_REASONS = new Set<TriggerReason>(['cron', 'campaign_created', 'manual', 'leadorch_event']);
 
 type Row = Record<string, any>;
 
@@ -83,6 +92,8 @@ function normalizeDraft(r: Row) {
     guardianScore: gs,
     scoreHuman: r.score_human ?? null,
     dismissReason: r.dismiss_reason ?? null,
+    failedReason: r.failed_reason ?? null,
+    publishedRef: r.published_ref ?? null,
     payload,
     assets: (r.assets ?? {}) as Record<string, any>,
     createdAt: r.created_at,
@@ -153,6 +164,7 @@ api.get('/drafts', async (c) => {
     const r = await tx.execute<Row>(sql`
       SELECT cd.id, cd.channel, cd.status, cd.campaign_id, cd.pillar, cd.publish_at,
              cd.payload, cd.assets, cd.score_human, cd.dismiss_reason,
+             cd.failed_reason, cd.published_ref,
              cd.created_at, cd.updated_at,
              c.name AS campaign_name
       FROM marketing.content_drafts cd
@@ -233,6 +245,7 @@ api.patch('/drafts/:id', async (c) => {
     const r = await tx.execute<Row>(sql`
       SELECT cd.id, cd.channel, cd.status, cd.campaign_id, cd.pillar, cd.publish_at,
              cd.payload, cd.assets, cd.score_human, cd.dismiss_reason,
+             cd.failed_reason, cd.published_ref,
              cd.created_at, cd.updated_at, c.name AS campaign_name
       FROM marketing.content_drafts cd
       LEFT JOIN marketing.campaigns c ON c.id = cd.campaign_id
@@ -637,5 +650,123 @@ api.get('/connections', async (c) => {
         lastSyncAt: hit?.updated_at ?? null,
       };
     }),
+  });
+});
+
+// ── POST /api/generate ──────────────────────────────────────────────
+// Trigger the GenerationWorkflow for a campaign. Powers the dashboard
+// "Generate more content" button and the campaign card's generate action.
+// Returns immediately with the workflow instance id; drafts appear in the
+// queue as the pipeline completes.
+
+api.post('/generate', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const body = await c.req.json<Record<string, any>>().catch(() => null);
+  if (!body || !body.campaignId) return err(c, 422, 'bad_input', 'campaignId is required');
+  try {
+    assertUuid(body.campaignId, 'campaignId');
+  } catch {
+    return err(c, 422, 'bad_campaign_id', 'campaignId must be a UUID');
+  }
+
+  const triggerReason: TriggerReason = TRIGGER_REASONS.has(body.triggerReason)
+    ? body.triggerReason
+    : 'manual';
+  const channels = Array.isArray(body.channels)
+    ? body.channels.map((s: unknown) => String(s).toLowerCase())
+    : undefined;
+
+  const params: GenerationParams = {
+    tenantId,
+    campaignId: body.campaignId,
+    triggerReason,
+    channels,
+  };
+  const env = c.env as unknown as PipelineEnv;
+
+  try {
+    if (env.GENERATION_WORKFLOW) {
+      const instance = await env.GENERATION_WORKFLOW.create({ params });
+      return c.json({ workflowId: instance.id, message: 'Generation started' });
+    }
+    // No workflow binding (some local-dev setups): run inline out-of-band.
+    c.executionCtx.waitUntil(
+      runGenerationPipeline(env, params).catch((e) =>
+        console.error('[api/generate] inline pipeline failed:', e instanceof Error ? e.message : e),
+      ),
+    );
+    return c.json({ workflowId: 'inline', message: 'Generation started (inline)' });
+  } catch (e) {
+    return err(c, 500, 'generate_failed', (e as Error).message);
+  }
+});
+
+// ── POST /api/publish/:draftId ──────────────────────────────────────
+// Immediate publish of a single approved draft (bypasses the 15-min cron).
+// Returns the live adapter result — or the exact failure reason.
+
+api.post('/publish/:draftId', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const draftId = c.req.param('draftId');
+  try {
+    assertUuid(draftId, 'draftId');
+  } catch {
+    return err(c, 422, 'bad_id', 'draftId must be a UUID');
+  }
+
+  const env = c.env as unknown as PipelineEnv;
+  let outcome;
+  try {
+    outcome = await publishSingleDraft(env, tenantId, draftId);
+  } catch (e) {
+    return err(c, 500, 'publish_failed', (e as Error).message);
+  }
+  if (!outcome.found) return err(c, 404, 'not_found', 'Draft not found');
+
+  return c.json(
+    {
+      draftId,
+      channel: outcome.channel,
+      status: outcome.status === 'published' ? 'published' : 'failed',
+      published_ref: outcome.publishedRef ?? null,
+      error: outcome.error ?? null,
+    },
+    outcome.status === 'published' ? 200 : 422,
+  );
+});
+
+// ── GET /api/queue-status ───────────────────────────────────────────
+// Header stats bar for the review queue.
+
+api.get('/queue-status', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const row = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT
+        count(*) FILTER (WHERE status = 'pending_review')                         AS pending,
+        count(*) FILTER (WHERE status = 'approved')                               AS approved,
+        count(*) FILTER (WHERE status = 'scheduled')                              AS scheduled,
+        count(*) FILTER (WHERE status = 'failed')                                 AS failed,
+        (SELECT count(*) FROM marketing.publish_log
+           WHERE tenant_id = ${tenantId}
+             AND published_at >= date_trunc('day', now()))                        AS published_today
+      FROM marketing.content_drafts
+      WHERE tenant_id = ${tenantId}
+    `);
+    return r.rows[0];
+  });
+
+  return c.json({
+    pending: Number(row?.pending ?? 0),
+    approved: Number(row?.approved ?? 0),
+    scheduled: Number(row?.scheduled ?? 0),
+    published_today: Number(row?.published_today ?? 0),
+    failed: Number(row?.failed ?? 0),
   });
 });

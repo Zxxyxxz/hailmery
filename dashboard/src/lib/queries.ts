@@ -12,6 +12,8 @@ import type {
   Draft,
   DraftStatus,
   PlatformConnection,
+  PublishNowResult,
+  QueueStatus,
   SiteConfigResponse,
 } from './types'
 
@@ -49,6 +51,63 @@ export function usePatchDraft() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drafts', currentId] })
+      qc.invalidateQueries({ queryKey: ['campaigns', currentId] })
+    },
+  })
+}
+
+// ── Queue status (header stats bar) ─────────────────────────────────
+
+export function useQueueStatus() {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['queue-status', currentId],
+    enabled: !!currentId,
+    queryFn: async () => {
+      const res = await api.get<QueueStatus>('/api/queue-status')
+      return res.data
+    },
+  })
+}
+
+// ── Generation + publish triggers ───────────────────────────────────
+
+export interface GenerateInput {
+  campaignId: string
+  channels?: string[]
+  triggerReason?: string
+}
+
+export function useGenerate() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async (input: GenerateInput) => {
+      const res = await api.post<{ workflowId: string; message: string }>(
+        '/api/generate',
+        { triggerReason: 'manual', ...input },
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drafts', currentId] })
+      qc.invalidateQueries({ queryKey: ['queue-status', currentId] })
+    },
+  })
+}
+
+/** Immediate publish of a single approved draft. Rejects (422) on failure. */
+export function usePublishNow() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async (draftId: string) => {
+      const res = await api.post<PublishNowResult>(`/api/publish/${draftId}`)
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drafts', currentId] })
+      qc.invalidateQueries({ queryKey: ['queue-status', currentId] })
       qc.invalidateQueries({ queryKey: ['campaigns', currentId] })
     },
   })

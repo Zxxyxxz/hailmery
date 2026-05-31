@@ -8,6 +8,8 @@ import {
   ChevronUp,
   Loader2,
   Save,
+  Send,
+  AlertTriangle,
 } from 'lucide-react'
 import type { Draft } from '@/lib/types'
 import { channelMeta } from '@/lib/channels'
@@ -17,7 +19,8 @@ import {
   fromDatetimeLocal,
   toDatetimeLocal,
 } from '@/lib/format'
-import { usePatchDraft } from '@/lib/queries'
+import { usePatchDraft, usePublishNow } from '@/lib/queries'
+import { toApiError } from '@/lib/api'
 import { ChannelIcon } from './ChannelIcon'
 import { GuardianBadge } from './GuardianBadge'
 import { Badge } from '@/components/ui/badge'
@@ -48,6 +51,7 @@ export function DraftCard({
 }) {
   const meta = channelMeta(draft.channel)
   const patch = usePatchDraft()
+  const publishNow = usePublishNow()
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [exiting, setExiting] = useState(false)
@@ -136,10 +140,22 @@ export function DraftCard({
           <Badge variant="cyan">{draft.campaignName}</Badge>
         )}
         {draft.pillar && <Badge variant="gray">{draft.pillar}</Badge>}
+        {draft.status === 'failed' && <Badge variant="red">Failed</Badge>}
+        {(draft.status === 'published' || draft.status === 'measured') && (
+          <Badge variant="green">Published</Badge>
+        )}
         <div className="ml-auto">
           <GuardianBadge score={draft.guardianScore} />
         </div>
       </div>
+
+      {/* Failure reason — surfaced on the card so the operator can act on it */}
+      {draft.status === 'failed' && draft.failedReason && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] p-3 text-xs text-red-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="break-words">{draft.failedReason}</span>
+        </div>
+      )}
 
       {/* Content preview */}
       <div className="mt-4 flex gap-4">
@@ -248,7 +264,7 @@ export function DraftCard({
                 Cancel
               </Button>
             </>
-          ) : (
+          ) : draft.status === 'pending_review' ? (
             <>
               <Popover
                 align="start"
@@ -366,7 +382,28 @@ export function DraftCard({
                 )}
               </Popover>
             </>
-          )}
+          ) : draft.status === 'approved' ? (
+            <div className="flex items-center gap-3">
+              <Button
+                variant="success"
+                size="sm"
+                onClick={() => publishNow.mutate(draft.id)}
+                disabled={publishNow.isPending}
+              >
+                {publishNow.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Publish now
+              </Button>
+              {publishNow.isError && (
+                <span className="text-xs text-red-400">
+                  {toApiError(publishNow.error).error}
+                </span>
+              )}
+            </div>
+          ) : null}
         </div>
       )}
 

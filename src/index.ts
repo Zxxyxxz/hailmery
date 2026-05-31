@@ -14,7 +14,8 @@ import { makeDb } from './db/client.js';
 import { findTenantBySlug } from './lib/tenant.js';
 import { brandVoicePage, brandVoiceSave } from './routes/settings.js';
 import { api } from './routes/api.js';
-import { runMailSync } from './jobs/scheduler.js';
+import { runPublishTick, runGenerationTick, runNightlyTick } from './jobs/scheduler.js';
+import type { SchedulerEnv } from './jobs/scheduler.js';
 import {
   processSendGridWebhookEvents,
   resolveMailSyncDeps,
@@ -32,7 +33,12 @@ type Env = {
   SENDGRID_WEBHOOK_SECRET: string;
   SECRETS_KEY: string;
   HUBSPOT_EVENT_TEMPLATE_ID?: string;
+  IDEOGRAM_API_KEY?: string;
+  R2_PUBLIC_BASE_URL?: string;
   ENVIRONMENT?: string;
+  // Cloudflare Workflow bindings (see wrangler.toml [[workflows]]).
+  GENERATION_WORKFLOW?: import('./workflows/types.js').WorkflowBinding;
+  PUBLISH_WORKFLOW?: import('./workflows/types.js').WorkflowBinding;
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -142,9 +148,26 @@ app.post('/webhooks/sendgrid', async (c) => {
   return c.text('ok', 200);
 });
 
+// Cloudflare Workflows must be exported (by class_name) from the entry module.
+export { GenerationWorkflow } from './workflows/generation.js';
+export { PublishWorkflow } from './workflows/publish.js';
+
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(runMailSync(env));
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    const schedEnv = env as unknown as SchedulerEnv;
+    switch (event.cron) {
+      case '*/15 * * * *':
+        ctx.waitUntil(runPublishTick(schedEnv));
+        break;
+      case '0 */6 * * *':
+        ctx.waitUntil(runGenerationTick(schedEnv));
+        break;
+      case '0 3 * * *':
+        ctx.waitUntil(runNightlyTick(schedEnv));
+        break;
+      default:
+        console.warn(`[scheduled] no handler for cron '${event.cron}'`);
+    }
   },
 };

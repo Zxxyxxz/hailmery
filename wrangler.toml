@@ -13,9 +13,24 @@ compatibility_flags = ["nodejs_compat"]
 [observability]
 enabled = true
 
-# Scheduled jobs — see src/jobs/scheduler.ts (runMailSync).
+# Scheduled jobs — routed by cron expression in src/index.ts scheduled().
+#   */15 * * * *  publish tick     → PublishWorkflow (all active tenants)
+#   0   */6 * * * generation tick  → GenerationWorkflow per under-target campaign
+#   0   3   * * * nightly tick     → mail sync + metrics placeholder
 [triggers]
-crons = ["0 */6 * * *"]
+crons = ["*/15 * * * *", "0 */6 * * *", "0 3 * * *"]
+
+# Cloudflare Workflows — the autonomous generation + publish pipelines.
+# The class_name must match a named export from src/index.ts (the main module).
+[[workflows]]
+name = "hailmery-generation"
+binding = "GENERATION_WORKFLOW"
+class_name = "GenerationWorkflow"
+
+[[workflows]]
+name = "hailmery-publish"
+binding = "PUBLISH_WORKFLOW"
+class_name = "PublishWorkflow"
 
 [vars]
 ENVIRONMENT = "development"

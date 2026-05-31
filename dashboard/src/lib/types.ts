@@ -74,10 +74,28 @@ export interface Draft {
   guardianScore: number | null
   scoreHuman: number | null
   dismissReason: string | null
+  failedReason: string | null
+  publishedRef: string | null
   payload: DraftPayload
   assets: DraftAssets
   createdAt: string
   updatedAt: string
+}
+
+export interface QueueStatus {
+  pending: number
+  approved: number
+  scheduled: number
+  published_today: number
+  failed: number
+}
+
+export interface PublishNowResult {
+  draftId: string
+  channel: string
+  status: 'published' | 'failed'
+  published_ref: string | null
+  error: string | null
 }
 
 export interface DraftCounts {
