@@ -386,7 +386,7 @@ Done (built and verified during the V1 push):
 
 Remaining to close V1:
 - [ ] **Chunk 7** — Analytics ingestion + learning loop
-- [ ] **Chunk 8** — Document upload pipeline (R2)
+- [x] **Chunk 8** — Document upload pipeline (R2)
 - [ ] **Chunk 9** — Deploy to Cloudflare
 
 ### V2 — 2–3 months, native social + intelligence

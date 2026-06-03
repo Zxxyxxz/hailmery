@@ -42,6 +42,10 @@ type Env = {
   GOOGLE_CLIENT_SECRET?: string;
   IMAGE_PROVIDER?: string;
   R2_PUBLIC_BASE_URL?: string;
+  // R2 bucket binding (wrangler.toml [[r2_buckets]]). Optional so the Node CLI
+  // path (no Worker runtime) type-checks; the upload route falls back to local
+  // disk when it's absent.
+  R2?: R2Bucket;
   ENVIRONMENT?: string;
   // Cloudflare Workflow bindings (see wrangler.toml [[workflows]]).
   GENERATION_WORKFLOW?: import('./workflows/types.js').WorkflowBinding;

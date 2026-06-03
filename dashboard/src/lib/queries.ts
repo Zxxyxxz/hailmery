@@ -21,6 +21,7 @@ import type {
   QueueStatus,
   SiteConfigResponse,
   TopContentResponse,
+  UploadResult,
 } from './types'
 
 // ── Drafts ──────────────────────────────────────────────────────────
@@ -221,6 +222,76 @@ export function useDocuments() {
       const res = await api.get<{ documents: DocumentRow[] }>('/api/documents')
       return res.data.documents
     },
+  })
+}
+
+/**
+ * Single document — used to poll ingestion progress after an upload/re-ingest
+ * until `ingestedAt`/`extractionStatus` settle. `pollUntilId` enables polling
+ * for just that id; pass null to disable.
+ */
+export function useDocument(id: string | null) {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['document', currentId, id],
+    enabled: !!currentId && !!id,
+    refetchInterval: (q) => {
+      const status = (q.state.data as DocumentRow | undefined)?.extractionStatus
+      // Keep polling every 2s until the pipeline settles.
+      return status === 'ingested' || status === 'failed' ? false : 2000
+    },
+    queryFn: async () => {
+      const res = await api.get<{ document: DocumentRow }>(`/api/documents/${id}`)
+      return res.data.document
+    },
+  })
+}
+
+export function useUploadDocument() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async ({
+      file,
+      documentType,
+      onUploadProgress,
+    }: {
+      file: File
+      documentType: string
+      onUploadProgress?: (pct: number) => void
+    }) => {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('document_type', documentType)
+      const res = await api.post<UploadResult>('/api/documents/upload', form, {
+        onUploadProgress: (e) => {
+          if (e.total) onUploadProgress?.(Math.round((e.loaded / e.total) * 100))
+        },
+      })
+      return res.data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents', currentId] }),
+  })
+}
+
+export function useReingestDocument() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post<UploadResult>(`/api/documents/${id}/reingest`)
+      return res.data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents', currentId] }),
+  })
+}
+
+export function useDeleteDocument() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async (id: string) => api.delete(`/api/documents/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents', currentId] }),
   })
 }
 

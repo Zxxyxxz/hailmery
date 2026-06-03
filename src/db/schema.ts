@@ -210,6 +210,12 @@ export const documents = marketing.table('documents', {
   r2Key: text('r2_key').notNull(),
   mimeType: text('mime_type').notNull(),
   version: integer('version').notNull().default(1),
+  // Number of (non-superseded) chunks the document produced on last ingest.
+  // Nullable: null = not yet ingested / extraction pending or failed.
+  chunkCount: integer('chunk_count'),
+  // Tracks the ingestion pipeline outcome: 'pending' (row created, work queued),
+  // 'ingested' (chunks embedded), or 'failed' (text extraction blew up).
+  extractionStatus: text('extraction_status'),
   ingestedAt: timestamp('ingested_at', { withTimezone: true }).notNull().defaultNow(),
   supersededAt: timestamp('superseded_at', { withTimezone: true }),
 }, (t) => ({
@@ -220,7 +226,9 @@ export const documents = marketing.table('documents', {
 export const documentChunks = marketing.table('document_chunks', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
-  documentId: uuid('document_id').notNull(),
+  documentId: uuid('document_id')
+    .notNull()
+    .references(() => documents.id, { onDelete: 'cascade' }),
   chunkIndex: integer('chunk_index').notNull(),
   chunkText: text('chunk_text').notNull(),
   embedding: vector('embedding', { dimensions: 1536 }).notNull(),

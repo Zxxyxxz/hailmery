@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plug,
   FileText,
@@ -12,15 +11,17 @@ import {
   Loader2,
   Save,
 } from 'lucide-react'
-import { api } from '@/lib/api'
 import { useTenant } from '@/lib/tenant-context'
 import {
   useCampaigns,
   useConnections,
+  useDeleteDocument,
   useDocuments,
   usePatchCampaign,
   usePatchSiteConfig,
+  useReingestDocument,
   useSiteConfig,
+  useUploadDocument,
 } from '@/lib/queries'
 import type { BrandVoice } from '@/lib/types'
 import { SELECTABLE_CHANNELS } from '@/lib/channels'
@@ -31,10 +32,12 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TagInput } from '@/components/ui/tag-input'
+
+type BadgeVariant = NonNullable<BadgeProps['variant']>
 
 export default function SettingsPage() {
   const [tab, setTab] = useState('brand')
@@ -201,58 +204,133 @@ function PlatformsTab() {
 
 // ── Tab 3 — Corpus Documents ────────────────────────────────────────
 
+const DOCUMENT_TYPES = [
+  'product_doc',
+  'marketing',
+  'brand_guideline',
+  'company_info',
+  'competitor',
+  'persona',
+  'sales_deck',
+  'golden_example',
+] as const
+
+// Per-type badge styling (PLAN: product_doc=blue, marketing=purple, etc.).
+// golden_example uses a custom gold class since the Badge has no gold variant.
+const DOC_TYPE_BADGE: Record<string, { variant: BadgeVariant; className?: string }> = {
+  product_doc: { variant: 'blue' },
+  marketing: { variant: 'purple' },
+  brand_guideline: { variant: 'cyan' },
+  company_info: { variant: 'green' },
+  competitor: { variant: 'red' },
+  persona: { variant: 'orange' },
+  sales_deck: { variant: 'amber' },
+  golden_example: {
+    variant: 'amber',
+    className: 'bg-yellow-400/15 text-yellow-300 border-yellow-400/30',
+  },
+}
+
+type UploadStage = 'uploading' | 'extracting' | 'embedding' | 'done' | 'failed'
+
+const STAGE_LABEL: Record<UploadStage, string> = {
+  uploading: 'Uploading…',
+  extracting: 'Extracting text…',
+  embedding: 'Embedding…',
+  done: 'Done',
+  failed: 'Upload failed',
+}
+
 function CorpusTab() {
-  const { currentId } = useTenant()
   const { data, isLoading } = useDocuments()
-  const qc = useQueryClient()
+  const upload = useUploadDocument()
+  const reingest = useReingestDocument()
+  const del = useDeleteDocument()
   const fileRef = useRef<HTMLInputElement>(null)
-  const [progress, setProgress] = useState<number | null>(null)
+  const [docType, setDocType] = useState<string>('product_doc')
   const [dragOver, setDragOver] = useState(false)
+  const [stage, setStage] = useState<UploadStage | null>(null)
+  const [uploadPct, setUploadPct] = useState(0)
+  const [result, setResult] = useState<{ chunks: number; error?: string } | null>(null)
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
-  const upload = useMutation({
-    mutationFn: async (file: File) => {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await api.post('/api/documents/upload', form, {
-        onUploadProgress: (e) => {
-          if (e.total) setProgress(Math.round((e.loaded / e.total) * 100))
-        },
-      })
-      return res.data
-    },
-    onSettled: () => {
-      setProgress(null)
-      qc.invalidateQueries({ queryKey: ['documents', currentId] })
-    },
-  })
-
-  const del = useMutation({
-    mutationFn: async (id: string) => api.delete(`/api/documents/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents', currentId] }),
-  })
+  function clearTimers() {
+    timers.current.forEach(clearTimeout)
+    timers.current = []
+  }
 
   function pick(files: FileList | null) {
-    const f = files?.[0]
-    if (f) {
-      setProgress(0)
-      upload.mutate(f)
-    }
+    const file = files?.[0]
+    if (!file) return
+    clearTimers()
+    setResult(null)
+    setUploadPct(0)
+    setStage('uploading')
+
+    upload.mutate(
+      {
+        file,
+        documentType: docType,
+        onUploadProgress: (pct) => {
+          setUploadPct(pct)
+          // File fully transferred → server is now extracting, then embedding.
+          if (pct >= 100) {
+            setStage('extracting')
+            timers.current.push(setTimeout(() => setStage('embedding'), 1000))
+          }
+        },
+      },
+      {
+        onSuccess: (res) => {
+          clearTimers()
+          if (res.status === 'failed') {
+            setStage('failed')
+            setResult({ chunks: 0, error: res.error })
+          } else {
+            setStage('done')
+            setResult({ chunks: res.chunk_count })
+          }
+          timers.current.push(setTimeout(() => { setStage(null); setResult(null) }, 5000))
+        },
+        onError: (e) => {
+          clearTimers()
+          setStage('failed')
+          setResult({ chunks: 0, error: e instanceof Error ? e.message : 'upload error' })
+        },
+      },
+    )
   }
+
+  const busy = stage != null && stage !== 'done' && stage !== 'failed'
 
   return (
     <div className="space-y-5">
+      <div className="flex items-end gap-3">
+        <div className="w-56">
+          <Label>Document type</Label>
+          <Select value={docType} onChange={(e) => setDocType(e.target.value)} disabled={busy}>
+            {DOCUMENT_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </Select>
+        </div>
+        <p className="pb-2 text-xs text-gray-600">
+          Tags every chunk so generation can retrieve by type.
+        </p>
+      </div>
+
       <div
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+        onDragOver={(e) => { e.preventDefault(); if (!busy) setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => { e.preventDefault(); setDragOver(false); pick(e.dataTransfer.files) }}
-        onClick={() => fileRef.current?.click()}
-        className={`glass-sm flex cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed py-10 text-center transition-colors ${dragOver ? 'border-cyan-500/40 bg-cyan-500/[0.04]' : 'border-white/[0.08]'}`}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!busy) pick(e.dataTransfer.files) }}
+        onClick={() => { if (!busy) fileRef.current?.click() }}
+        className={`glass-sm flex cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed py-10 text-center transition-colors ${dragOver ? 'border-cyan-500/40 bg-cyan-500/[0.04]' : 'border-white/[0.08]'} ${busy ? 'pointer-events-none opacity-70' : ''}`}
       >
         <Upload className="h-6 w-6 text-gray-500" />
         <div className="text-sm text-gray-400">
           Drag &amp; drop or <span className="text-cyan-400">browse</span>
         </div>
-        <div className="text-xs text-gray-600">.pdf, .docx, .md, .txt</div>
+        <div className="text-xs text-gray-600">.pdf, .docx, .md, .txt · max 10MB</div>
         <input
           ref={fileRef}
           type="file"
@@ -260,14 +338,10 @@ function CorpusTab() {
           className="hidden"
           onChange={(e) => pick(e.target.files)}
         />
-        {progress != null && (
+
+        {stage && (
           <div className="mt-3 w-2/3">
-            <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+            <UploadProgress stage={stage} pct={uploadPct} result={result} />
           </div>
         )}
       </div>
@@ -290,38 +364,102 @@ function CorpusTab() {
               </tr>
             </thead>
             <tbody>
-              {(data ?? []).map((doc) => (
-                <tr key={doc.id} className="border-t border-white/[0.04]">
-                  <td className="px-4 py-2.5 text-gray-200">{doc.sourceFilename}</td>
-                  <td className="px-4 py-2.5">
-                    <Badge variant="gray">{doc.documentType}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-500">
-                    {new Date(doc.ingestedAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-gray-400">{doc.chunkCount}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-400">v{doc.version}</td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" title="Re-ingest">
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Delete"
-                        onClick={() => del.mutate(doc.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {(data ?? []).map((doc) => {
+                const badge = DOC_TYPE_BADGE[doc.documentType] ?? { variant: 'gray' as BadgeVariant }
+                const failed = doc.extractionStatus === 'failed'
+                const reingesting = reingest.isPending && reingest.variables === doc.id
+                return (
+                  <tr key={doc.id} className="border-t border-white/[0.04]">
+                    <td className="px-4 py-2.5 text-gray-200">{doc.sourceFilename}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge variant={badge.variant} className={badge.className}>
+                        {doc.documentType}
+                      </Badge>
+                      {failed && (
+                        <Badge variant="red" className="ml-1">failed</Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500">
+                      {new Date(doc.ingestedAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-gray-400">
+                      {doc.chunkCount} <span className="text-xs text-gray-600">chunks</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-gray-400">v{doc.version}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Re-ingest"
+                          disabled={reingesting}
+                          onClick={() => reingest.mutate(doc.id)}
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 ${reingesting ? 'animate-spin' : ''}`} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Delete"
+                          disabled={del.isPending && del.variables === doc.id}
+                          onClick={() => del.mutate(doc.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
       </Card>
+    </div>
+  )
+}
+
+const STAGE_ORDER: UploadStage[] = ['uploading', 'extracting', 'embedding']
+
+function UploadProgress({
+  stage,
+  pct,
+  result,
+}: {
+  stage: UploadStage
+  pct: number
+  result: { chunks: number; error?: string } | null
+}) {
+  if (stage === 'done') {
+    return (
+      <div className="flex items-center justify-center gap-1.5 text-sm text-emerald-400">
+        <CheckCircle2 className="h-4 w-4" />
+        Done — {result?.chunks ?? 0} chunks created
+      </div>
+    )
+  }
+  if (stage === 'failed') {
+    return (
+      <div className="text-sm text-red-400">
+        {STAGE_LABEL.failed}{result?.error ? ` — ${result.error}` : ''}
+      </div>
+    )
+  }
+  const activeIdx = STAGE_ORDER.indexOf(stage)
+  // Bar fills with real transfer % during upload, then advances per stage.
+  const barPct = stage === 'uploading' ? pct : Math.round(((activeIdx + 1) / STAGE_ORDER.length) * 100)
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        {STAGE_LABEL[stage]}
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
+          style={{ width: `${barPct}%` }}
+        />
+      </div>
     </div>
   )
 }

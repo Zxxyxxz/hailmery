@@ -98,6 +98,27 @@ CREATE INDEX IF NOT EXISTS gsc_keywords_impressions_idx
 CREATE UNIQUE INDEX IF NOT EXISTS gsc_keywords_row_uq
   ON marketing.gsc_keywords (tenant_id, site_id, query, page_url, week_of);
 
+-- 1e. Document upload pipeline (Chunk 8 — R2 ingest). Idempotent so the migrate
+--     path provisions the new columns + FK WITHOUT a destructive db:push.
+--     Drizzle's schema.ts stays the source of truth + types; this mirrors the diff.
+
+-- documents: chunk count + extraction status set by the upload/reingest pipeline.
+ALTER TABLE IF EXISTS marketing.documents
+  ADD COLUMN IF NOT EXISTS chunk_count integer;
+ALTER TABLE IF EXISTS marketing.documents
+  ADD COLUMN IF NOT EXISTS extraction_status text;
+
+-- document_chunks.document_id → documents.id, ON DELETE CASCADE so deleting a
+-- document removes its chunks in one statement (the delete route relies on it).
+DO $$ BEGIN
+  ALTER TABLE marketing.document_chunks
+    ADD CONSTRAINT document_chunks_document_id_fk
+    FOREIGN KEY (document_id) REFERENCES marketing.documents(id) ON DELETE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;
+END $$;
+
 -- 2. HNSW index for fast cosine ANN on document_chunks.embedding.
 --    Cosine is what text-embedding-3-small ships normalized for.
 --    Only run if the table actually exists (lets us call this migration

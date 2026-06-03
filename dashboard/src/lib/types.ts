@@ -166,6 +166,21 @@ export interface DocumentRow {
   version: number
   ingestedAt: string
   chunkCount: number
+  /** 'pending' | 'ingested' | 'failed' — set by the ingestion pipeline. */
+  extractionStatus?: string | null
+  r2Key?: string
+}
+
+/** Response from POST /api/documents/upload and /reingest. */
+export interface UploadResult {
+  document_id: string
+  filename: string
+  document_type: string
+  chunk_count: number
+  r2_key: string
+  status: 'ingested' | 'failed'
+  version?: number
+  error?: string
 }
 
 export interface Tenant {

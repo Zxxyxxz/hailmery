@@ -23,6 +23,13 @@ import { generateBlog } from '../generation/blog.js';
 import { generateEmail } from '../generation/email.js';
 import { generateImage, type ImageType } from '../generation/image.js';
 import { insertDraft, estimateTextCostCents } from '../generation/context.js';
+import {
+  extractText,
+  extensionOf,
+  isSupportedExtension,
+} from '../corpus/extract.js';
+import { embedChunks, replaceDocumentChunks } from '../corpus/ingest.js';
+import { putObject, getObject, deleteObject } from '../lib/storage.js';
 
 type ApiEnv = {
   DATABASE_URL: string;
@@ -33,6 +40,9 @@ type ApiEnv = {
   GOOGLE_API_KEY?: string;
   IMAGE_PROVIDER?: string;
   R2_PUBLIC_BASE_URL?: string;
+  // R2 bucket for uploaded corpus documents (see wrangler.toml). Optional so the
+  // route can fall back to local disk when run outside the Worker runtime.
+  R2?: R2Bucket;
   GENERATION_WORKFLOW?: import('../workflows/types.js').WorkflowBinding;
   PUBLISH_WORKFLOW?: import('../workflows/types.js').WorkflowBinding;
 };
@@ -51,6 +61,34 @@ const DRAFT_STATUSES = new Set([
   'dismissed',
   'failed',
 ]);
+
+// Upload pipeline constraints (Chunk 8). Document types mirror the
+// marketing.document_type enum; the upload route casts the validated value into
+// it so a bad type can never reach the DB.
+const DOCUMENT_TYPES = new Set([
+  'product_doc',
+  'marketing',
+  'brand_guideline',
+  'company_info',
+  'competitor',
+  'persona',
+  'golden_example',
+  'sales_deck',
+]);
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB
+
+function mimeForExt(ext: string): string {
+  switch (ext) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'md':
+      return 'text/markdown';
+    default:
+      return 'text/plain';
+  }
+}
 
 export const api = new Hono<{ Bindings: ApiEnv }>();
 
@@ -558,56 +596,270 @@ api.get('/documents', async (c) => {
   });
 });
 
+// ── GET /api/documents/:id ──────────────────────────────────────────
+// Single document — powers the dashboard's ingestion-progress polling.
+
+api.get('/documents/:id', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const id = c.req.param('id');
+  try {
+    assertUuid(id, 'id');
+  } catch {
+    return err(c, 422, 'bad_id', 'document id must be a UUID');
+  }
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const row = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT d.id, d.source_filename, d.document_type, d.version, d.ingested_at,
+             d.extraction_status, d.r2_key, d.chunk_count
+      FROM marketing.documents d
+      WHERE d.id = ${id} AND d.tenant_id = ${tenantId}
+      LIMIT 1
+    `);
+    return r.rows[0] ?? null;
+  });
+  if (!row) return err(c, 404, 'not_found', 'document not found');
+
+  return c.json({
+    document: {
+      id: row.id,
+      sourceFilename: row.source_filename,
+      documentType: row.document_type,
+      version: row.version,
+      ingestedAt: row.ingested_at,
+      extractionStatus: row.extraction_status,
+      r2Key: row.r2_key,
+      chunkCount: row.chunk_count == null ? null : Number(row.chunk_count),
+    },
+  });
+});
+
 // ── POST /api/documents/upload ──────────────────────────────────────
-// Stores document metadata and queues ingestion. The R2 write + chunk/embed
-// pipeline is wired in V1 (workflows/ingestion.ts); V0 records the row so the
-// corpus list reflects the upload immediately.
+// Full ingestion pipeline, synchronously: validate → store to R2 → extract text
+// → chunk (512/64) → embed (text-embedding-3-small) → upsert document_chunks →
+// stamp the document row. Returns the chunk count so the caller knows the
+// corpus is queryable immediately. Extraction failures degrade to a partial
+// success (status='failed') instead of a 5xx — the file is still stored.
 
 api.post('/documents/upload', async (c) => {
   const tenantId = tenantOf(c);
   if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
 
+  // STEP 1 — receive + validate.
   const form = await c.req.parseBody().catch(() => null);
   const file = form?.file;
   if (!(file instanceof File)) return err(c, 422, 'no_file', 'multipart "file" field required');
 
+  const rawType = typeof form?.document_type === 'string' ? form.document_type : '';
+  const documentType = rawType || 'product_doc';
+  if (!DOCUMENT_TYPES.has(documentType)) {
+    return err(c, 422, 'bad_document_type', `document_type must be one of: ${[...DOCUMENT_TYPES].join(', ')}`);
+  }
+
   const filename = file.name;
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  const mime =
-    file.type ||
-    (ext === 'pdf' ? 'application/pdf' : ext === 'md' ? 'text/markdown' : 'text/plain');
-  const r2Key = `tenant/${tenantId}/corpus/${filename}`;
+  const ext = extensionOf(filename);
+  if (!isSupportedExtension(ext)) {
+    return err(c, 422, 'bad_file_type', 'file must be .pdf, .docx, .md, or .txt');
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength === 0) return err(c, 422, 'empty_file', 'uploaded file is empty');
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+    return err(c, 422, 'file_too_large', 'max file size is 10MB');
+  }
+  const mime = file.type || mimeForExt(ext);
 
   const db = makeDb(c.env.DATABASE_URL);
-  const row = await withTenantDb(db, tenantId, async (tx) => {
+
+  // Record the document row first so we have its id for the R2 key. Re-uploading
+  // the same filename reuses the existing row (and id) and bumps the version.
+  const documentId = await withTenantDb(db, tenantId, async (tx) => {
     const r = await tx.execute<Row>(sql`
       INSERT INTO marketing.documents
-        (tenant_id, source, source_filename, document_type, r2_key, mime_type, version)
-      VALUES (${tenantId}, 'upload', ${filename}, 'product_doc', ${r2Key}, ${mime}, 1)
-      ON CONFLICT (tenant_id, source_filename)
-        DO UPDATE SET version = marketing.documents.version + 1,
-                      ingested_at = now(), superseded_at = NULL, r2_key = EXCLUDED.r2_key
-      RETURNING id, source_filename, document_type, version, ingested_at
+        (tenant_id, source, source_filename, document_type, r2_key, mime_type, version, extraction_status)
+      VALUES (
+        ${tenantId}, 'upload', ${filename}, ${documentType}::marketing.document_type,
+        '', ${mime}, 1, 'pending'
+      )
+      ON CONFLICT (tenant_id, source_filename) DO UPDATE SET
+        version = marketing.documents.version + 1,
+        document_type = EXCLUDED.document_type,
+        mime_type = EXCLUDED.mime_type,
+        extraction_status = 'pending',
+        superseded_at = NULL
+      RETURNING id
     `);
-    return r.rows[0];
+    return r.rows[0].id as string;
   });
 
+  const r2Key = `corpus/${tenantId}/${documentId}/${filename}`;
+
+  // STEP 2 — store the original to R2 (local-disk fallback when unbound).
+  await putObject(c.env.R2, r2Key, bytes, mime);
+
+  // STEP 3 — extract text. A failure here is a partial success: the file is
+  // stored, but the row is marked failed and no chunks are written.
+  let text: string;
+  try {
+    text = await extractText(bytes, filename);
+  } catch (e) {
+    return markFailed(c, db, tenantId, documentId, r2Key, filename, documentType, e);
+  }
+  if (!text.trim()) {
+    return markFailed(c, db, tenantId, documentId, r2Key, filename, documentType, new Error('no extractable text in file'));
+  }
+
+  // STEP 4 — chunk + embed (outside the tx; embedding is a network call).
+  let chunks: string[];
+  let embeddings: number[][];
+  try {
+    ({ chunks, embeddings } = await embedChunks(text));
+  } catch (e) {
+    return markFailed(c, db, tenantId, documentId, r2Key, filename, documentType, e);
+  }
+
+  // STEP 5 — supersede old chunks, insert fresh ones, stamp the document.
+  const chunkCount = await withTenantDb(db, tenantId, async (tx) => {
+    const n = await replaceDocumentChunks(tx, { tenantId, documentId, chunks, embeddings });
+    await tx.execute(sql`
+      UPDATE marketing.documents
+      SET ingested_at = now(), chunk_count = ${n}, r2_key = ${r2Key},
+          extraction_status = 'ingested', superseded_at = NULL
+      WHERE id = ${documentId} AND tenant_id = ${tenantId}
+    `);
+    return n;
+  });
+
+  // STEP 6 — respond.
   return c.json(
     {
-      document: {
-        id: row.id,
-        sourceFilename: row.source_filename,
-        documentType: row.document_type,
-        version: row.version,
-        ingestedAt: row.ingested_at,
-        chunkCount: 0,
-      },
+      document_id: documentId,
+      filename,
+      document_type: documentType,
+      chunk_count: chunkCount,
+      r2_key: r2Key,
+      status: 'ingested',
     },
     201,
   );
 });
 
+/** Mark a document's ingest failed and return a 200 partial-success response. */
+async function markFailed(
+  c: Context,
+  db: ReturnType<typeof makeDb>,
+  tenantId: string,
+  documentId: string,
+  r2Key: string,
+  filename: string,
+  documentType: string,
+  e: unknown,
+) {
+  const error = e instanceof Error ? e.message : String(e);
+  console.error(`[upload] extraction failed for ${filename} (${documentId}):`, error);
+  await withTenantDb(db, tenantId, async (tx) => {
+    await tx.execute(sql`
+      UPDATE marketing.documents
+      SET extraction_status = 'failed', r2_key = ${r2Key}, chunk_count = NULL
+      WHERE id = ${documentId} AND tenant_id = ${tenantId}
+    `);
+  });
+  return c.json(
+    {
+      document_id: documentId,
+      filename,
+      document_type: documentType,
+      chunk_count: 0,
+      r2_key: r2Key,
+      status: 'failed',
+      error,
+    },
+    200,
+  );
+}
+
+// ── POST /api/documents/:id/reingest ────────────────────────────────
+// Re-runs extraction + chunking + embedding from the stored R2 object, bumps
+// the document version, and supersedes the previous chunks. Powers the Corpus
+// tab's "Re-ingest" button.
+
+api.post('/documents/:id/reingest', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const id = c.req.param('id');
+  try {
+    assertUuid(id, 'id');
+  } catch {
+    return err(c, 422, 'bad_id', 'document id must be a UUID');
+  }
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const doc = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT id, source_filename, r2_key, document_type
+      FROM marketing.documents
+      WHERE id = ${id} AND tenant_id = ${tenantId}
+      LIMIT 1
+    `);
+    return r.rows[0] ?? null;
+  });
+  if (!doc) return err(c, 404, 'not_found', 'document not found');
+
+  const filename = doc.source_filename as string;
+  const r2Key = doc.r2_key as string;
+  const documentType = doc.document_type as string;
+
+  // Download the original from storage.
+  const bytes = await getObject(c.env.R2, r2Key);
+  if (!bytes) {
+    return err(c, 422, 'file_missing', 'original file is not in storage — re-upload it first');
+  }
+
+  // Extract → embed (extraction failure = partial success, version unchanged).
+  let text: string;
+  try {
+    text = await extractText(bytes, filename);
+    if (!text.trim()) throw new Error('no extractable text in file');
+  } catch (e) {
+    return markFailed(c, db, tenantId, id, r2Key, filename, documentType, e);
+  }
+
+  let chunks: string[];
+  let embeddings: number[][];
+  try {
+    ({ chunks, embeddings } = await embedChunks(text));
+  } catch (e) {
+    return markFailed(c, db, tenantId, id, r2Key, filename, documentType, e);
+  }
+
+  const result = await withTenantDb(db, tenantId, async (tx) => {
+    const n = await replaceDocumentChunks(tx, { tenantId, documentId: id, chunks, embeddings });
+    const upd = await tx.execute<Row>(sql`
+      UPDATE marketing.documents
+      SET version = version + 1, ingested_at = now(), chunk_count = ${n},
+          extraction_status = 'ingested', superseded_at = NULL
+      WHERE id = ${id} AND tenant_id = ${tenantId}
+      RETURNING version
+    `);
+    return { chunkCount: n, version: Number(upd.rows[0].version) };
+  });
+
+  return c.json({
+    document_id: id,
+    filename,
+    document_type: documentType,
+    chunk_count: result.chunkCount,
+    version: result.version,
+    r2_key: r2Key,
+    status: 'ingested',
+  });
+});
+
 // ── DELETE /api/documents/:id ───────────────────────────────────────
+// Removes the R2 object, soft-deletes the chunks, then deletes the document
+// row (the FK cascade clears the chunks for good).
 
 api.delete('/documents/:id', async (c) => {
   const tenantId = tenantOf(c);
@@ -620,9 +872,30 @@ api.delete('/documents/:id', async (c) => {
   }
 
   const db = makeDb(c.env.DATABASE_URL);
+
+  // Look up the r2_key first so we can clear the stored object.
+  const r2Key = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT r2_key FROM marketing.documents
+      WHERE id = ${id} AND tenant_id = ${tenantId} LIMIT 1
+    `);
+    return (r.rows[0]?.r2_key as string | undefined) ?? null;
+  });
+  if (r2Key === null) return err(c, 404, 'not_found', 'document not found');
+
+  // Best-effort R2 delete — never block the DB cleanup on a storage hiccup.
+  try {
+    await deleteObject(c.env.R2, r2Key);
+  } catch (e) {
+    console.error(`[delete] R2 delete failed for ${r2Key}:`, e);
+  }
+
   await withTenantDb(db, tenantId, async (tx) => {
+    // Soft-delete chunks (audit trail), then delete the doc — the FK cascade
+    // removes the chunk rows so nothing is orphaned.
     await tx.execute(sql`
-      DELETE FROM marketing.document_chunks
+      UPDATE marketing.document_chunks
+      SET superseded = true
       WHERE document_id = ${id} AND tenant_id = ${tenantId}
     `);
     await tx.execute(sql`

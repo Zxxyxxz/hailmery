@@ -33,5 +33,13 @@ name = "hailmery-publish"
 binding = "PUBLISH_WORKFLOW"
 class_name = "PublishWorkflow"
 
+# R2 — stores uploaded tenant corpus documents (corpus/{tenant}/{doc}/{file}) and
+# generated image/video assets. `wrangler dev` simulates this bucket locally, so
+# no real bucket is needed until deploy (`wrangler r2 bucket create hailmery-assets`).
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "hailmery-assets"
+preview_bucket_name = "hailmery-assets-preview"
+
 [vars]
 ENVIRONMENT = "development"
