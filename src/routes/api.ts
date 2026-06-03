@@ -12,13 +12,17 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { sql } from 'drizzle-orm';
 import { makeDb } from '../db/client.js';
-import { withTenantDb, assertUuid } from '../lib/tenant.js';
+import { withTenantDb, assertUuid, findFirstSiteForTenant } from '../lib/tenant.js';
 import { brandGuardian } from '../agents/guardian.js';
 import { runGenerationPipeline } from '../workflows/generation.js';
 import { publishSingleDraft } from '../workflows/publish.js';
 import type { PipelineEnv, GenerationParams, TriggerReason } from '../workflows/types.js';
 import { generateWeeklyIntelligenceBrief } from '../jobs/intelligence.js';
 import { generateSocial, SOCIAL_CHANNELS } from '../generation/social.js';
+import { generateBlog } from '../generation/blog.js';
+import { generateEmail } from '../generation/email.js';
+import { generateImage, type ImageType } from '../generation/image.js';
+import { insertDraft, estimateTextCostCents } from '../generation/context.js';
 
 type ApiEnv = {
   DATABASE_URL: string;
@@ -840,9 +844,31 @@ api.post('/intelligence/refresh', async (c) => {
 });
 
 // ── POST /api/generate-now ──────────────────────────────────────────
-// One-shot generation from a topic — powers the "Create now" modal opened from
-// a topic card. Runs the social generator inline and returns the pending draft.
-// Body: { topic, channel?, voiceModifier? }. channel defaults to linkedin.
+// One-shot generation from a topic — powers the "Create now" modal on the queue
+// page (and the intelligence topic cards). Runs the right generator inline based
+// on channel, optionally attaches a paired image, and returns the new draft id.
+// Body: { topic, channel?, campaignId?, toneOverride?, generateImage? }.
+//   channel defaults to linkedin; generateImage defaults to true.
+
+const SOCIAL_NOW = new Set<string>(SOCIAL_CHANNELS as readonly string[]);
+const IMAGE_TYPE_FOR_CHANNEL = (channel: string): ImageType =>
+  channel === 'blog' || channel === 'wix-blog'
+    ? 'blog_header'
+    : channel === 'email'
+      ? 'email_header'
+      : 'social_square';
+
+async function tenantNameOf(
+  db: ReturnType<typeof makeDb>,
+  tenantId: string,
+): Promise<string> {
+  return withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(
+      sql`SELECT name FROM marketing.tenants WHERE id = ${tenantId} LIMIT 1`,
+    );
+    return (r.rows[0]?.name as string) ?? 'the brand';
+  });
+}
 
 api.post('/generate-now', async (c) => {
   const tenantId = tenantOf(c);
@@ -853,25 +879,101 @@ api.post('/generate-now', async (c) => {
   if (!topic) return err(c, 422, 'bad_input', 'topic is required');
 
   const channel = (typeof body?.channel === 'string' ? body.channel : 'linkedin').toLowerCase();
-  if (!(SOCIAL_CHANNELS as readonly string[]).includes(channel)) {
-    return err(c, 422, 'bad_channel', `channel must be one of: ${SOCIAL_CHANNELS.join(', ')}`);
+  const isBlog = channel === 'blog' || channel === 'wix-blog';
+  const isEmail = channel === 'email';
+  if (!isBlog && !isEmail && !SOCIAL_NOW.has(channel)) {
+    return err(c, 422, 'bad_channel', `Unsupported channel: ${channel}`);
   }
+
   const voiceModifier =
-    typeof body?.voiceModifier === 'string' && body.voiceModifier.trim()
-      ? body.voiceModifier.trim()
+    typeof body?.toneOverride === 'string' && body.toneOverride.trim()
+      ? body.toneOverride.trim()
       : undefined;
+  let campaignId: string | null = null;
+  if (typeof body?.campaignId === 'string' && body.campaignId) {
+    try {
+      assertUuid(body.campaignId, 'campaignId');
+      campaignId = body.campaignId;
+    } catch {
+      return err(c, 422, 'bad_campaign_id', 'campaignId must be a UUID');
+    }
+  }
+  const wantImage = body?.generateImage !== false; // default ON
 
   const db = makeDb(c.env.DATABASE_URL);
   try {
-    const res = await generateSocial({ db, tenantId, topic, channel, voiceModifier });
+    let draftId: string;
+    let guardianScore: number | null = null;
+
+    if (isBlog) {
+      const tenantName = await tenantNameOf(db, tenantId);
+      const blog = await generateBlog({ db, tenantId, tenantName, topic });
+      const guardian = await brandGuardian({ db, tenantId, draftText: blog.body });
+      guardianScore = guardian.score;
+      const site = await findFirstSiteForTenant(db, tenantId);
+      if (!site) return err(c, 422, 'no_site', 'Tenant has no site to attach the draft to');
+      draftId = await insertDraft({
+        db,
+        tenantId,
+        siteId: site.id,
+        campaignId,
+        channel: 'blog',
+        payload: {
+          kind: 'blog',
+          topic,
+          title: blog.frontmatter.title,
+          slug: blog.frontmatter.slug,
+          excerpt: blog.frontmatter.excerpt,
+          tags: blog.frontmatter.tags,
+          body: blog.body,
+          guardianScore: guardian.score,
+          guardianNotes: guardian.notes,
+          flagged: guardian.flagged,
+          sources: blog.sources,
+        },
+        costCents: estimateTextCostCents(blog.usage),
+      });
+    } else if (isEmail) {
+      const res = await generateEmail({
+        db,
+        tenantId,
+        emailType: 'newsletter',
+        topic,
+        campaignId,
+        voiceModifier,
+      });
+      if (!res.draftId) return err(c, 500, 'generate_now_failed', 'email produced no draft');
+      draftId = res.draftId;
+      guardianScore = res.guardianScore;
+    } else {
+      const res = await generateSocial({ db, tenantId, topic, channel, campaignId, voiceModifier });
+      draftId = res.draftId;
+      guardianScore = res.guardianScore;
+    }
+
+    // Best-effort paired image — never fails the draft creation.
+    let imageUrl: string | null = null;
+    let imageSkipped: boolean | null = null;
+    let imageError: string | null = null;
+    if (wantImage) {
+      try {
+        const img = await generateImage({
+          db,
+          tenantId,
+          draftId,
+          imageType: IMAGE_TYPE_FOR_CHANNEL(channel),
+          publicBaseUrl: c.env.R2_PUBLIC_BASE_URL,
+        });
+        imageSkipped = img.skipped;
+        imageUrl = img.skipped ? null : img.url;
+      } catch (e) {
+        imageError = (e as Error).message;
+        console.error('[generate-now] image generation failed (non-fatal):', imageError);
+      }
+    }
+
     return c.json(
-      {
-        draftId: res.draftId,
-        channel: res.channel,
-        text: res.text,
-        guardianScore: res.guardianScore,
-        flaggedCount: res.flaggedCount,
-      },
+      { draftId, channel, guardianScore, imageGenerated: !!imageUrl, imageSkipped, imageUrl, imageError },
       201,
     );
   } catch (e) {

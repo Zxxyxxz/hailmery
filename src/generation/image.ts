@@ -231,8 +231,10 @@ export async function generateImage(opts: {
     bytes = await callGeminiImage(prompt, ratio, GEMINI_MODELS[provider]);
   }
 
-  // Store: R2 binding if present, else local fallback for the CLI demo.
-  let storedTo: 'r2' | 'local';
+  // Store: R2 binding if present, else local fallback for the CLI demo. The
+  // Worker runtime has neither R2 (in local dev) nor node:fs, so the local write
+  // is best-effort — when it can't run we still return a viewable URL.
+  let storedTo: 'r2' | 'local' | 'none';
   let publicUrl: string;
   const base = opts.publicBaseUrl ?? process.env.R2_PUBLIC_BASE_URL;
   if (opts.r2) {
@@ -240,14 +242,28 @@ export async function generateImage(opts: {
     storedTo = 'r2';
     publicUrl = base ? `${base.replace(/\/$/, '')}/${r2Key}` : (providerUrl ?? `https://placeholder.invalid/${r2Key}`);
   } else {
-    const { writeFile, mkdir } = await import('node:fs/promises');
-    const path = await import('node:path');
-    const localPath = path.join(process.cwd(), 'out', '_assets', tenantId, draftId, `${imageType}.png`);
-    await mkdir(path.dirname(localPath), { recursive: true });
-    await writeFile(localPath, bytes);
-    storedTo = 'local';
-    console.warn(`[image] no R2 binding in this runtime — wrote bytes to ${localPath} (deferred to Worker for real R2 upload).`);
-    publicUrl = base ? `${base.replace(/\/$/, '')}/${r2Key}` : `file://${localPath}`;
+    // Try a local file write — works under the Node CLI; the Worker runtime has
+    // no node:fs, so tolerate failure rather than failing the whole image.
+    let localPath: string | null = null;
+    try {
+      const { writeFile, mkdir } = await import('node:fs/promises');
+      const path = await import('node:path');
+      localPath = path.join(process.cwd(), 'out', '_assets', tenantId, draftId, `${imageType}.png`);
+      await mkdir(path.dirname(localPath), { recursive: true });
+      await writeFile(localPath, bytes);
+      storedTo = 'local';
+      console.warn(`[image] no R2 binding in this runtime — wrote bytes to ${localPath} (deferred to Worker for real R2 upload).`);
+    } catch (e) {
+      storedTo = 'none';
+      localPath = null;
+      console.warn(`[image] no R2 binding and no local filesystem (${(e as Error).message}) — relying on the provider-hosted URL.`);
+    }
+    // Prefer a real public base, then the provider's hosted URL (Ideogram
+    // returns a CDN URL that a browser CAN load — unlike file://), then a local
+    // file path, then a placeholder.
+    publicUrl = base
+      ? `${base.replace(/\/$/, '')}/${r2Key}`
+      : (providerUrl ?? (localPath ? `file://${localPath}` : `https://placeholder.invalid/${r2Key}`));
   }
 
   // Record the asset + attach the key to the draft.
@@ -267,9 +283,11 @@ export async function generateImage(opts: {
         ${IMAGE_COST_CENTS}
       )
     `);
+    // Store the canonical R2 key under the image-type slot AND a browser-loadable
+    // `imageUrl` the dashboard's DraftCard renders as a thumbnail.
     await tx.execute(sql`
       UPDATE marketing.content_drafts
-      SET assets = COALESCE(assets, '{}'::jsonb) || ${JSON.stringify({ [imageType]: r2Key })}::jsonb,
+      SET assets = COALESCE(assets, '{}'::jsonb) || ${JSON.stringify({ [imageType]: r2Key, imageUrl: publicUrl })}::jsonb,
           updated_at = now()
       WHERE id = ${draftId} AND tenant_id = ${tenantId}
     `);

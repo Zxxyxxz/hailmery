@@ -268,7 +268,7 @@ function CreateNowDialog({
     generate.mutate({
       topic: topicText.trim(),
       channel,
-      voiceModifier: tone.trim() || undefined,
+      toneOverride: tone.trim() || undefined,
     })
   }
 
@@ -287,11 +287,12 @@ function CreateNowDialog({
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm text-emerald-300">
               <CheckCircle2 className="h-5 w-5" />
-              Draft created — guardian score{' '}
-              {result.guardianScore.toFixed(2)}.
-            </div>
-            <div className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-sm text-gray-300">
-              {result.text}
+              Draft created
+              {typeof result.guardianScore === 'number'
+                ? ` — guardian score ${result.guardianScore.toFixed(2)}`
+                : ''}
+              . It’s in the review queue
+              {result.imageGenerated ? ' with a paired image' : ''}.
             </div>
             <div className="flex justify-end">
               <Button onClick={close}>Done</Button>

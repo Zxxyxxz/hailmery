@@ -205,13 +205,18 @@ export interface IntelligenceBrief {
 export interface GenerateNowInput {
   topic: string
   channel?: string
-  voiceModifier?: string
+  campaignId?: string | null
+  toneOverride?: string
+  generateImage?: boolean
 }
 
 export interface GenerateNowResult {
   draftId: string
   channel: string
-  text: string
-  guardianScore: number
-  flaggedCount: number
+  guardianScore: number | null
+  imageGenerated: boolean
+  imageSkipped: boolean | null
+  imageUrl: string | null
+  /** Set when the (best-effort) paired image failed; the draft is still created. */
+  imageError?: string | null
 }

@@ -32,6 +32,14 @@ type Db = NeonDatabase<Record<string, unknown>>;
 const QUEUE_TARGET = 5; // desired live drafts per channel before a channel is "full"
 const QUEUE_STATUSES = ['pending_review', 'approved', 'scheduled'] as const;
 
+// A manual "Generate more" click is an explicit user request, so it always
+// produces content — even when the queue is already at/over target. It forces a
+// small fixed batch per channel rather than topping up to the target.
+const FORCE_BATCH = 2;
+// When a campaign has no channels configured (e.g. the seeded Default Evergreen),
+// a manual trigger still needs somewhere to publish — default to LinkedIn.
+const DEFAULT_MANUAL_CHANNELS = ['linkedin'];
+
 // Campaign phase → voice-modifier addendum appended to the generation prompt.
 const PHASE_MODIFIERS: Record<string, string> = {
   awareness:
@@ -100,10 +108,15 @@ export async function loadCampaignContext(
     if (!camp) throw new Error(`Campaign ${input.campaignId} not found for tenant ${input.tenantId}`);
 
     const channelConfig = (camp.channel_config ?? {}) as Record<string, unknown>;
-    const channels =
+    let channels =
       input.channels && input.channels.length
         ? input.channels.map((c) => c.toLowerCase())
         : Object.keys(channelConfig).map((c) => c.toLowerCase());
+    // A manual top-up against a campaign with no configured channels still needs
+    // a target — fall back to a sensible default so the click always generates.
+    if (channels.length === 0 && input.triggerReason === 'manual') {
+      channels = [...DEFAULT_MANUAL_CHANNELS];
+    }
 
     // Topic pool: pillar topics → site content_focus topics → audience-seeded
     // generics. RAG grounds each topic against the corpus regardless, so this
@@ -160,6 +173,7 @@ export async function loadCampaignContext(
 export async function checkQueueDepth(
   env: PipelineEnv,
   ctx: CampaignContext,
+  force = false,
 ): Promise<ChannelPlan[]> {
   const db = makeDb(env.DATABASE_URL);
   return withTenantDb(db, ctx.tenantId, async (tx) => {
@@ -175,7 +189,9 @@ export async function checkQueueDepth(
           )}]::marketing.draft_status[])
       `);
       const current = Number(r.rows[0]?.n ?? 0);
-      const toGenerate = current >= QUEUE_TARGET ? 0 : QUEUE_TARGET - current;
+      // Force mode (manual click): always generate a small batch. Otherwise top
+      // up to the target and skip channels that are already full.
+      const toGenerate = force ? FORCE_BATCH : current >= QUEUE_TARGET ? 0 : QUEUE_TARGET - current;
       plans.push({ channel, current, toGenerate });
     }
     return plans;
@@ -378,7 +394,7 @@ export async function runGenerationPipeline(
   input: GenerationParams,
 ): Promise<{ created: CreatedDraft[]; phase: string }> {
   const ctx = await loadCampaignContext(env, input);
-  const plans = await checkQueueDepth(env, ctx);
+  const plans = await checkQueueDepth(env, ctx, input.triggerReason === 'manual');
   const phase = determineCampaignPhase(ctx, new Date());
   const created = await generateContent(env, ctx, plans, phase);
   await notifyQueue(ctx, created);
@@ -392,7 +408,9 @@ export class GenerationWorkflow extends WorkflowEntrypoint<PipelineEnv, Generati
     const env = this.env;
 
     const ctx = await step.do('loadCampaign', () => loadCampaignContext(env, input));
-    const plans = await step.do('checkQueueDepth', () => checkQueueDepth(env, ctx));
+    const plans = await step.do('checkQueueDepth', () =>
+      checkQueueDepth(env, ctx, input.triggerReason === 'manual'),
+    );
 
     // Pure step — wrapped so its result is journaled and the phase can't drift
     // between a replay and the original run.

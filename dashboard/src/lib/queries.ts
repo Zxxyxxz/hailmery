@@ -22,14 +22,23 @@ import type {
 
 // ── Drafts ──────────────────────────────────────────────────────────
 
-export function useDrafts(params: { status?: DraftStatus; month?: string }) {
+export function useDrafts(params: {
+  status?: DraftStatus
+  month?: string
+  /** Poll interval (ms) while generation is in flight; false to disable. */
+  refetchInterval?: number | false
+}) {
   const { currentId } = useTenant()
+  const { status, month, refetchInterval = false } = params
   return useQuery({
-    queryKey: ['drafts', currentId, params],
+    // Keep the cache key stable across refetchInterval changes — only the data
+    // filters belong in the key.
+    queryKey: ['drafts', currentId, { status, month }],
     enabled: !!currentId,
+    refetchInterval,
     queryFn: async () => {
       const res = await api.get<{ drafts: Draft[] }>('/api/drafts', {
-        params: { status: params.status, month: params.month },
+        params: { status, month },
       })
       return res.data.drafts
     },
