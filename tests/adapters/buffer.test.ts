@@ -105,21 +105,17 @@ describe('BufferAdapter', () => {
   });
 
   describe('fetchMetrics', () => {
-    it('returns parsed interactions', async () => {
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({
-          interactions: [
-            { metric: 'impressions', count: 500 },
-            { metric: 'clicks', count: 30 },
-            { metric: 'likes', count: 120 },
-          ],
-        }),
-      );
-
+    it('is a no-op — Buffer has no analytics endpoint, so returns empty metrics without an API call', async () => {
       const metrics = await adapter.fetchMetrics('upd_abc');
-      expect(metrics.impressions).toBe(500);
-      expect(metrics.clicks).toBe(30);
-      expect(metrics.engagement).toBe(120);
+
+      expect(metrics).toEqual({
+        impressions: 0,
+        clicks: 0,
+        engagement: 0,
+        attributedLeads: 0,
+      });
+      // No HTTP request is made — the nightly metrics job no longer 401s.
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 

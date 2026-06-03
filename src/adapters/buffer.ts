@@ -10,10 +10,10 @@ import {
   authHeaders,
 } from './index.js';
 
-// Legacy v1 REST base — still used by fetchMetrics/quotaState below. The
-// current OIDC-style personal access token does NOT authenticate against it
-// (returns 401), so publish() targets Buffer's GraphQL API instead. Migrating
-// metrics + quota off v1 is tracked separately.
+// Legacy v1 REST base — still used by quotaState() below. The current
+// OIDC-style personal access token does NOT authenticate against it (returns
+// 401), so publish() targets Buffer's GraphQL API instead and fetchMetrics() is
+// a no-op (see below). Migrating quota off v1 is tracked separately.
 const BASE = 'https://api.bufferapp.com/1';
 
 // Buffer's GraphQL API — https://developers.buffer.com.
@@ -146,38 +146,15 @@ export class BufferAdapter implements ChannelAdapter {
     };
   }
 
-  async fetchMetrics(draftId: string): Promise<MetricsResult> {
-    if (!draftId) return EMPTY_METRICS;
-
-    const res = await adapterFetch(
-      `${BASE}/updates/${draftId}/interactions.json`,
-      { method: 'GET', headers: authHeaders(this.token) },
-    );
-
-    const data = (await res.json()) as {
-      interactions?: Array<{ metric: string; count: number }>;
-      total?: number;
-    };
-
-    let impressions = 0;
-    let clicks = 0;
-    let engagement = 0;
-
-    for (const interaction of data.interactions ?? []) {
-      switch (interaction.metric) {
-        case 'impressions':
-          impressions = interaction.count;
-          break;
-        case 'clicks':
-          clicks = interaction.count;
-          break;
-        default:
-          engagement += interaction.count;
-          break;
-      }
-    }
-
-    return { impressions, clicks, engagement, attributedLeads: 0 };
+  async fetchMetrics(_draftId: string): Promise<MetricsResult> {
+    // Buffer API does not expose post engagement metrics programmatically. Real
+    // impressions and engagement for LinkedIn/X posts are fetched via the native
+    // platform analytics APIs (LinkedIn Member Post Analytics API in V2, X
+    // Analytics API in V2). This method is a no-op until native adapters replace
+    // Buffer — returning empty metrics keeps the nightly metrics job from logging
+    // a 401 for every published post (the legacy v1 endpoint rejects the current
+    // OIDC token).
+    return EMPTY_METRICS;
   }
 
   async quotaState(): Promise<QuotaState> {
