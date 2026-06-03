@@ -56,8 +56,11 @@ export async function generateBlog(opts: {
   }
   const topicLiteral = sql.raw(`'[${topicVector.join(',')}]'::vector`);
 
-  // 2. Pull brand voice + top-k=8 chunks within the tenant's RLS context.
-  const { brandVoice, chunks } = await withTenantDb(db, tenantId, async (tx) => {
+  // 2. Pull brand voice + top-k=8 chunks + recent golden examples within the
+  //    tenant's RLS context. Golden examples are the tenant's own top-performing
+  //    drafts, promoted by the nightly metrics job — retrieving them closes the
+  //    learning loop (the model matches what historically outperformed).
+  const { brandVoice, chunks, golden } = await withTenantDb(db, tenantId, async (tx) => {
     const cfgRows = await tx.select({ bv: siteConfig.brandVoice }).from(siteConfig).limit(1);
     const bv = (cfgRows[0]?.bv ?? {}) as Record<string, unknown>;
 
@@ -72,7 +75,18 @@ export async function generateBlog(opts: {
       LIMIT 8
     `);
 
-    return { brandVoice: bv, chunks: res.rows };
+    const goldenRes = await tx.execute<{ chunk_text: string }>(sql`
+      SELECT dc.chunk_text
+      FROM marketing.document_chunks dc
+      JOIN marketing.documents d ON dc.document_id = d.id
+      WHERE dc.tenant_id = ${tenantId}
+        AND d.document_type = 'golden_example'
+        AND dc.superseded = false
+      ORDER BY dc.created_at DESC
+      LIMIT 3
+    `);
+
+    return { brandVoice: bv, chunks: res.rows, golden: goldenRes.rows };
   });
 
   if (chunks.length === 0) {
@@ -104,6 +118,17 @@ export async function generateBlog(opts: {
     ),
   ].join('\n\n');
 
+  // High-performing examples retrieved from the learning loop, prepended ahead
+  // of the corpus so the model anchors on proven voice before the facts.
+  const goldenBlock =
+    golden.length > 0
+      ? [
+          'High-performing examples of our content style. Match this quality and voice:',
+          '',
+          ...golden.map((g, i) => `── Example ${i + 1} ──\n${g.chunk_text.trim()}`),
+        ].join('\n\n')
+      : '';
+
   const today = new Date().toISOString().slice(0, 10);
   const userPrompt = [
     `Topic: ${topic}`,
@@ -128,6 +153,7 @@ export async function generateBlog(opts: {
     max_tokens: 4096,
     system: [
       { type: 'text', text: staticPrefix, cache_control: { type: 'ephemeral' } },
+      ...(goldenBlock ? [{ type: 'text' as const, text: goldenBlock }] : []),
       { type: 'text', text: corpusBlock },
     ],
     messages: [{ role: 'user', content: userPrompt }],

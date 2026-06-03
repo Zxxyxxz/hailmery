@@ -6,6 +6,7 @@ import {
 import { api } from './api'
 import { useTenant } from './tenant-context'
 import type {
+  AnalyticsSummary,
   Campaign,
   CreateCampaignInput,
   DocumentRow,
@@ -13,11 +14,13 @@ import type {
   DraftStatus,
   GenerateNowInput,
   GenerateNowResult,
+  GscKeyword,
   IntelligenceBrief,
   PlatformConnection,
   PublishNowResult,
   QueueStatus,
   SiteConfigResponse,
+  TopContentResponse,
 } from './types'
 
 // ── Drafts ──────────────────────────────────────────────────────────
@@ -265,6 +268,44 @@ export function useGenerateNow() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drafts', currentId] })
       qc.invalidateQueries({ queryKey: ['queue-status', currentId] })
+    },
+  })
+}
+
+// ── Analytics ───────────────────────────────────────────────────────
+
+export function useAnalyticsSummary() {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['analytics-summary', currentId],
+    enabled: !!currentId,
+    queryFn: async () => {
+      const res = await api.get<AnalyticsSummary>('/api/analytics/summary')
+      return res.data
+    },
+  })
+}
+
+export function useTopContent() {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['analytics-top-content', currentId],
+    enabled: !!currentId,
+    queryFn: async () => {
+      const res = await api.get<TopContentResponse>('/api/analytics/top-content')
+      return res.data
+    },
+  })
+}
+
+export function useKeywords() {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['analytics-keywords', currentId],
+    enabled: !!currentId,
+    queryFn: async () => {
+      const res = await api.get<{ keywords: GscKeyword[] }>('/api/analytics/keywords')
+      return res.data.keywords
     },
   })
 }

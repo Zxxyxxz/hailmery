@@ -210,6 +210,58 @@ export interface GenerateNowInput {
   generateImage?: boolean
 }
 
+// ── Analytics ───────────────────────────────────────────────────────
+
+export interface PublishedByDay {
+  day: string
+  channel: string
+  count: number
+}
+
+export interface ChannelPerformance {
+  channel: string
+  posts: number
+  avgImpressions: number
+  avgEngagement: number
+  engagementRate: number
+}
+
+export interface AnalyticsSummary {
+  pending_count: number
+  published_count: number
+  avg_guardian: number | null
+  published_by_day: PublishedByDay[]
+  channel_performance: ChannelPerformance[]
+}
+
+export interface TopContentItem {
+  id: string
+  channel: string
+  preview: string
+  publishedAt: string | null
+  impressions: number
+  clicks: number
+  engagement: number
+  performanceScore: number | null
+  guardianScore: number | null
+}
+
+export interface TopContentResponse {
+  hasMetrics: boolean
+  items: TopContentItem[]
+}
+
+export interface GscKeyword {
+  query: string
+  page: string
+  impressions: number
+  clicks: number
+  ctr: number
+  position: number
+  isHighPerformer: boolean
+  weekOf: string
+}
+
 export interface GenerateNowResult {
   draftId: string
   channel: string

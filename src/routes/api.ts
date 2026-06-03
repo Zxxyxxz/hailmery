@@ -856,6 +856,200 @@ api.post('/intelligence/refresh', async (c) => {
   }
 });
 
+// ── Analytics ───────────────────────────────────────────────────────
+// Real performance data for the Analytics dashboard. Effective publish date is
+// COALESCE(publish_log.published_at, publish_at, updated_at) because V1 records
+// the canonical publish time in publish_log, not on content_drafts. Channels are
+// normalised (twitter → x, wix-blog → blog) so the four main channels aggregate
+// cleanly.
+
+const CHANNEL_NORM = sql`CASE
+  WHEN lower(cd.channel) IN ('x', 'twitter') THEN 'x'
+  WHEN lower(cd.channel) IN ('blog', 'wix-blog') THEN 'blog'
+  ELSE lower(cd.channel)
+END`;
+
+const EFFECTIVE_PUBLISHED_AT = sql`COALESCE(
+  (SELECT max(pl.published_at) FROM marketing.publish_log pl WHERE pl.draft_id = cd.id),
+  cd.publish_at, cd.updated_at
+)`;
+
+function previewOf(payload: Record<string, any>): string {
+  const t = payload.title ?? payload.subject ?? payload.text ?? payload.excerpt ?? '';
+  const s = typeof t === 'string' ? t.trim() : '';
+  return s.length > 90 ? `${s.slice(0, 90)}…` : s;
+}
+
+// GET /api/analytics/summary — stat cards + 14-day chart + channel performance.
+api.get('/analytics/summary', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const data = await withTenantDb(db, tenantId, async (tx) => {
+    const counts = await tx.execute<Row>(sql`
+      SELECT
+        count(*) FILTER (WHERE status = 'pending_review')                 AS pending,
+        count(*) FILTER (WHERE status IN ('published', 'measured'))       AS published,
+        avg((payload->>'guardianScore')::numeric)
+          FILTER (WHERE payload ? 'guardianScore')                        AS avg_guardian
+      FROM marketing.content_drafts
+      WHERE tenant_id = ${tenantId}
+    `);
+
+    // Posts published per day per channel over the last 14 days.
+    const byDay = await tx.execute<Row>(sql`
+      SELECT to_char(date_trunc('day', ${EFFECTIVE_PUBLISHED_AT}), 'YYYY-MM-DD') AS day,
+             ${CHANNEL_NORM} AS channel,
+             count(*)::int AS n
+      FROM marketing.content_drafts cd
+      WHERE cd.tenant_id = ${tenantId}
+        AND cd.status IN ('published', 'measured')
+        AND ${EFFECTIVE_PUBLISHED_AT} >= now() - interval '14 days'
+      GROUP BY day, channel
+      ORDER BY day
+    `);
+
+    // Channel performance — posts + avg impressions + engagement rate, from
+    // content_metrics aggregated per draft (MAX across windows) then per channel.
+    const channelPerf = await tx.execute<Row>(sql`
+      WITH per_draft AS (
+        SELECT cd.id, ${CHANNEL_NORM} AS channel,
+               COALESCE(max(cm.impressions), 0) AS impressions,
+               COALESCE(max(cm.clicks), 0) AS clicks,
+               COALESCE(max(cm.engagement), 0) AS engagement,
+               bool_or(cm.id IS NOT NULL) AS has_metrics
+        FROM marketing.content_drafts cd
+        LEFT JOIN marketing.content_metrics cm ON cm.draft_id = cd.id
+        WHERE cd.tenant_id = ${tenantId}
+          AND cd.status IN ('published', 'measured')
+        GROUP BY cd.id, channel
+      )
+      SELECT channel,
+             count(*)::int AS posts,
+             round(avg(impressions))::int AS avg_impressions,
+             round(avg(engagement))::int AS avg_engagement,
+             CASE WHEN sum(impressions) > 0
+                  THEN round(sum(engagement)::numeric / sum(impressions), 4)
+                  ELSE 0 END AS engagement_rate
+      FROM per_draft
+      GROUP BY channel
+    `);
+
+    return { counts: counts.rows[0], byDay: byDay.rows, channelPerf: channelPerf.rows };
+  });
+
+  const channelOrder = ['linkedin', 'blog', 'x', 'email'];
+  const perfByChannel = new Map<string, Row>();
+  for (const r of data.channelPerf) perfByChannel.set(String(r.channel), r);
+
+  return c.json({
+    pending_count: Number(data.counts?.pending ?? 0),
+    published_count: Number(data.counts?.published ?? 0),
+    avg_guardian:
+      data.counts?.avg_guardian != null ? Number(Number(data.counts.avg_guardian).toFixed(2)) : null,
+    published_by_day: data.byDay.map((r) => ({
+      day: r.day,
+      channel: r.channel,
+      count: Number(r.n),
+    })),
+    channel_performance: channelOrder.map((ch) => {
+      const r = perfByChannel.get(ch);
+      return {
+        channel: ch,
+        posts: Number(r?.posts ?? 0),
+        avgImpressions: Number(r?.avg_impressions ?? 0),
+        avgEngagement: Number(r?.avg_engagement ?? 0),
+        engagementRate: Number(r?.engagement_rate ?? 0),
+      };
+    }),
+  });
+});
+
+// GET /api/analytics/top-content — top 10 published drafts by performance_score
+// (falling back to impressions when unscored).
+api.get('/analytics/top-content', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const rows = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT cd.id, cd.channel, cd.payload, cd.performance_score,
+             cd.payload->>'guardianScore' AS guardian_score,
+             ${EFFECTIVE_PUBLISHED_AT} AS published_at,
+             COALESCE(m.impressions, 0) AS impressions,
+             COALESCE(m.clicks, 0) AS clicks,
+             COALESCE(m.engagement, 0) AS engagement,
+             (m.draft_id IS NOT NULL) AS has_metrics
+      FROM marketing.content_drafts cd
+      LEFT JOIN LATERAL (
+        SELECT cm.draft_id,
+               max(cm.impressions) AS impressions,
+               max(cm.clicks) AS clicks,
+               max(cm.engagement) AS engagement
+        FROM marketing.content_metrics cm
+        WHERE cm.draft_id = cd.id
+        GROUP BY cm.draft_id
+      ) m ON true
+      WHERE cd.tenant_id = ${tenantId}
+        AND cd.status IN ('published', 'measured')
+      ORDER BY cd.performance_score DESC NULLS LAST,
+               m.impressions DESC NULLS LAST,
+               (cd.payload->>'guardianScore')::numeric DESC NULLS LAST
+      LIMIT 10
+    `);
+    return r.rows;
+  });
+
+  const hasMetrics = rows.some((r) => r.has_metrics === true);
+  return c.json({
+    hasMetrics,
+    items: rows.map((r) => ({
+      id: r.id,
+      channel: r.channel,
+      preview: previewOf((r.payload ?? {}) as Record<string, any>),
+      publishedAt: r.published_at,
+      impressions: Number(r.impressions),
+      clicks: Number(r.clicks),
+      engagement: Number(r.engagement),
+      performanceScore: r.performance_score != null ? Number(r.performance_score) : null,
+      guardianScore: r.guardian_score != null ? Number(r.guardian_score) : null,
+    })),
+  });
+});
+
+// GET /api/analytics/keywords — top 20 GSC keywords by impressions.
+api.get('/analytics/keywords', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const rows = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT query, page_url, impressions, clicks, ctr, position, is_high_performer, week_of
+      FROM marketing.gsc_keywords
+      WHERE tenant_id = ${tenantId}
+      ORDER BY impressions DESC
+      LIMIT 20
+    `);
+    return r.rows;
+  });
+
+  return c.json({
+    keywords: rows.map((r) => ({
+      query: r.query,
+      page: r.page_url,
+      impressions: Number(r.impressions),
+      clicks: Number(r.clicks),
+      ctr: r.ctr != null ? Number(r.ctr) : 0,
+      position: r.position != null ? Number(r.position) : 0,
+      isHighPerformer: r.is_high_performer === true,
+      weekOf: r.week_of,
+    })),
+  });
+});
+
 // ── POST /api/generate-now ──────────────────────────────────────────
 // One-shot generation from a topic — powers the "Create now" modal on the queue
 // page (and the intelligence topic cards). Runs the right generator inline based

@@ -4,6 +4,7 @@ import {
   text,
   integer,
   bigint,
+  numeric,
   timestamp,
   date,
   jsonb,
@@ -249,6 +250,13 @@ export const contentDrafts = marketing.table('content_drafts', {
   publishAt: timestamp('publish_at', { withTimezone: true }),
   publishedRef: text('published_ref'),
   costCents: integer('cost_cents').notNull().default(0),
+  // Set by the nightly metrics job (Chunk 7). raw engagement score divided by
+  // the tenant's median score for that channel over the last 30 days — >1.0
+  // means the draft outperformed baseline. Nullable until first scored.
+  performanceScore: numeric('performance_score'),
+  // True for the top decile of scored drafts (score > 1.0). Those drafts are
+  // promoted into golden_example document_chunks so generation retrieves them.
+  isGoldenExample: boolean('is_golden_example').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -280,6 +288,9 @@ export const contentMetrics = marketing.table('content_metrics', {
 }, (t) => ({
   tenantIdx: index('content_metrics_tenant_idx').on(t.tenantId),
   draftIdx: index('content_metrics_draft_idx').on(t.draftId, t.window),
+  // One row per draft per window — lets the metrics job upsert idempotently
+  // (re-runs of the nightly pass refresh in place rather than duplicating).
+  draftWindowUq: uniqueIndex('content_metrics_draft_window_uq').on(t.tenantId, t.draftId, t.window),
 }));
 
 export const syncLog = marketing.table('sync_log', {
@@ -326,6 +337,30 @@ export const metricsQueue = marketing.table('metrics_queue', {
   draftIdx: index('metrics_queue_draft_idx').on(t.draftId),
 }));
 
+// GSC keyword performance — synced weekly by the nightly metrics job (Chunk 7)
+// from Google Search Console for each site that has google credentials. One row
+// per (query, page) per ISO week; `is_high_performer` flags queries whose
+// impressions exceed 3× the tenant's average for that week — those surface in
+// the analytics dashboard and feed reactive generation suggestions.
+export const gscKeywords = marketing.table('gsc_keywords', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  siteId: uuid('site_id').notNull(),
+  query: text('query').notNull(),
+  pageUrl: text('page_url').notNull(),
+  impressions: integer('impressions').notNull().default(0),
+  clicks: integer('clicks').notNull().default(0),
+  ctr: numeric('ctr').notNull().default('0'),
+  position: numeric('position').notNull().default('0'),
+  isHighPerformer: boolean('is_high_performer').notNull().default(false),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  weekOf: date('week_of').notNull(),
+}, (t) => ({
+  tenantIdx: index('gsc_keywords_tenant_idx').on(t.tenantId),
+  impressionsIdx: index('gsc_keywords_impressions_idx').on(t.tenantId, t.impressions),
+  rowUq: uniqueIndex('gsc_keywords_row_uq').on(t.tenantId, t.siteId, t.query, t.pageUrl, t.weekOf),
+}));
+
 // Weekly intelligence briefs — the Monday 08:00 UTC job (src/jobs/intelligence.ts)
 // researches the past 7 days of AI-security news with Claude + web search and
 // writes one row per tenant per week: a jsonb array of 5-7 suggested topics the
@@ -362,3 +397,4 @@ export type SyncLogEntry = typeof syncLog.$inferSelect;
 export type Asset = typeof assets.$inferSelect;
 export type MetricsQueueEntry = typeof metricsQueue.$inferSelect;
 export type IntelligenceBrief = typeof intelligenceBriefs.$inferSelect;
+export type GscKeyword = typeof gscKeywords.$inferSelect;

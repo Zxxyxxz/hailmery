@@ -36,6 +36,10 @@ type Env = {
   HUBSPOT_EVENT_TEMPLATE_ID?: string;
   IDEOGRAM_API_KEY?: string;
   GOOGLE_API_KEY?: string;
+  // GSC OAuth client config — used by the nightly metrics job to refresh the
+  // tenant's Google access token before pulling Search Console keyword data.
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   IMAGE_PROVIDER?: string;
   R2_PUBLIC_BASE_URL?: string;
   ENVIRONMENT?: string;

@@ -60,6 +60,44 @@ CREATE INDEX IF NOT EXISTS intelligence_briefs_tenant_idx
 CREATE UNIQUE INDEX IF NOT EXISTS intelligence_briefs_tenant_week_uq
   ON marketing.intelligence_briefs (tenant_id, week_of);
 
+-- 1d. Analytics ingestion + learning loop (Chunk 7). Idempotent, and placed
+--     BEFORE the RLS enable/policy loops so gsc_keywords automatically picks up
+--     the uniform tenant_isolation policy. Drizzle's schema.ts stays the source
+--     of truth + types; this mirrors the diff for the migrate path.
+
+-- content_drafts learning-loop columns.
+ALTER TABLE IF EXISTS marketing.content_drafts
+  ADD COLUMN IF NOT EXISTS performance_score numeric;
+ALTER TABLE IF EXISTS marketing.content_drafts
+  ADD COLUMN IF NOT EXISTS is_golden_example boolean NOT NULL DEFAULT false;
+
+-- content_metrics: one row per (tenant, draft, window) so the nightly job can
+-- upsert in place instead of duplicating on re-run.
+CREATE UNIQUE INDEX IF NOT EXISTS content_metrics_draft_window_uq
+  ON marketing.content_metrics (tenant_id, draft_id, "window");
+
+-- gsc_keywords — weekly Google Search Console keyword performance per site.
+CREATE TABLE IF NOT EXISTS marketing.gsc_keywords (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id         uuid NOT NULL,
+  site_id           uuid NOT NULL,
+  query             text NOT NULL,
+  page_url          text NOT NULL,
+  impressions       integer NOT NULL DEFAULT 0,
+  clicks            integer NOT NULL DEFAULT 0,
+  ctr               numeric NOT NULL DEFAULT 0,
+  position          numeric NOT NULL DEFAULT 0,
+  is_high_performer boolean NOT NULL DEFAULT false,
+  fetched_at        timestamptz NOT NULL DEFAULT now(),
+  week_of           date NOT NULL
+);
+CREATE INDEX IF NOT EXISTS gsc_keywords_tenant_idx
+  ON marketing.gsc_keywords (tenant_id);
+CREATE INDEX IF NOT EXISTS gsc_keywords_impressions_idx
+  ON marketing.gsc_keywords (tenant_id, impressions);
+CREATE UNIQUE INDEX IF NOT EXISTS gsc_keywords_row_uq
+  ON marketing.gsc_keywords (tenant_id, site_id, query, page_url, week_of);
+
 -- 2. HNSW index for fast cosine ANN on document_chunks.embedding.
 --    Cosine is what text-embedding-3-small ships normalized for.
 --    Only run if the table actually exists (lets us call this migration

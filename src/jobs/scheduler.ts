@@ -19,12 +19,13 @@ import {
 } from '../services/mailsync.js';
 import { runGenerationPipeline } from '../workflows/generation.js';
 import { runPublishPipeline } from '../workflows/publish.js';
+import { runNightlyMetrics, type MetricsEnv } from './metrics.js';
 import type { PipelineEnv, GenerationParams } from '../workflows/types.js';
 
 const QUEUE_TARGET = 5;
 const QUEUE_STATUSES = ['pending_review', 'approved', 'scheduled'] as const;
 
-export type SchedulerEnv = MailSyncEnv & PipelineEnv;
+export type SchedulerEnv = MailSyncEnv & PipelineEnv & MetricsEnv;
 
 // ── triggers (workflow binding when present, inline fallback otherwise) ──
 
@@ -107,11 +108,16 @@ export async function runGenerationTick(env: SchedulerEnv): Promise<void> {
 }
 
 // ── 0 3 — nightly tick ──────────────────────────────────────────────
+// Mail sync first (HubSpot → SendGrid), then the metrics ingestion + learning
+// loop (drain metrics_queue, GSC + Umami sync, performance scoring, golden-
+// example tagging). Each is isolated so a failure in one never blocks the other.
 export async function runNightlyTick(env: SchedulerEnv): Promise<void> {
   await runMailSync(env);
-  // Metrics job lands in Chunk 7 — it will drain marketing.metrics_queue rows
-  // whose fetch_at <= now(). Placeholder until then.
-  console.log('[scheduler] nightly metrics job placeholder (Chunk 7)');
+  try {
+    await runNightlyMetrics(env);
+  } catch (err) {
+    console.error('[scheduler] nightly metrics job failed:', err instanceof Error ? err.message : err);
+  }
 }
 
 // Runs the HubSpot -> SendGrid contact sync for every tenant that has both

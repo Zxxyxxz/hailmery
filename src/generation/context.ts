@@ -188,7 +188,7 @@ export function buildCorpusBlock(chunks: RetrievedChunk[]): string {
 export function buildGoldenBlock(golden: RetrievedChunk[]): string {
   if (golden.length === 0) return '';
   return [
-    'Golden examples — content the operator previously approved as on-voice. Match their rhythm, structure, and confidence; do not copy their wording.',
+    'High-performing examples of our content style. Match this quality and voice — match their rhythm, structure, and confidence; do not copy their wording.',
     '',
     ...golden.map((g, i) => `── Golden ${i + 1} — ${g.source_filename} ──\n${g.chunk_text.trim()}`),
   ].join('\n\n');
