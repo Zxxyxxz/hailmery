@@ -367,6 +367,27 @@ Add the publishing surface + the integration gauntlet. Baran runs his weekly mar
 
 **OSM in V1**: brought on mid-V1 once Baran confirms OSM's stack and publishing surface — this forces per-tenant config to be real, not aspirational. Pending questions for Baran are tracked under the V0/V1 onboarding task.
 
+#### V1 progress checklist
+
+Done (built and verified during the V1 push):
+- [x] Multi-tenant schema with RLS
+- [x] 6 platform adapters
+- [x] Mail sync service
+- [x] Approval queue dashboard
+- [x] Generation engine (blog / social / email / image)
+- [x] Scheduling + publish workflows
+- [x] Buffer GraphQL integration
+- [x] Gemini 3 Pro image generation
+- [x] Three-category visual system
+- [x] Weekly intelligence brief
+- [x] OSM corpus ingested
+- [x] Manual test end-to-end confirmed
+
+Remaining to close V1:
+- [ ] **Chunk 7** — Analytics ingestion + learning loop
+- [ ] **Chunk 8** — Document upload pipeline (R2)
+- [ ] **Chunk 9** — Deploy to Cloudflare
+
 ### V2 — 2–3 months, native social + intelligence
 As each OAuth review clears, swap Buffer → native adapter via `plan_preferences.publish_via` flag per channel. Expected order: LinkedIn → X → Meta → TikTok → Pinterest.
 
@@ -377,6 +398,21 @@ As each OAuth review clears, swap Buffer → native adapter via `plan_preference
 - **Brand drift check** runs every 20 pieces.
 - **Multi-site UI**: tenant switcher in top nav + sub-site switcher. Per-tenant config import wizard for additional Kuzey sites if Baran wants them onboarded.
 - **Approval queue at scale**: silently introduce bulk-approve + auto-approve-high-confidence thresholds (Guardian score >0.9 → optional auto-approve per channel).
+
+#### V2 additions (decided during the V1 build)
+
+Features surfaced while building V1 that were deliberately deferred to V2 rather than scope-creep the internship deliverable:
+
+1. **Cancel button for running jobs** — give long-running generation and intelligence-brief jobs a user-triggered cancel. Wire a cancellation signal through the Cloudflare Workflow so an in-flight run can be aborted cleanly from the dashboard instead of waiting it out.
+2. **Generate More with channel/topic selection** — the current "Generate More" fires blind into the default channel. V2 adds an explicit channel + topic picker so the operator chooses what gets generated instead of accepting the default-channel fallback.
+3. **LinkedIn Member Post Analytics API** — pull historical post-performance data directly from LinkedIn via the Member Post Analytics API rather than relying solely on Buffer/adapter `fetchMetrics()`. Feeds `content_metrics` with first-party engagement history.
+4. **Historical Buffer post import** — ingest the 102 existing APIRE LinkedIn posts (with their engagement metrics) as learning data. Seeds the learning loop with real performance history instead of starting from zero. Top performers become `golden_example` candidates.
+5. **Performance-weighted topic selection** — once 30+ days of published content exists, weight the Strategist's topic generation toward angles that historically outperformed. Closes the gap between "metrics ingested" (V1) and "metrics actually steering generation."
+6. **Competitor content gap analysis** — scan competitor content libraries to find topics the tenant hasn't covered, surfacing uncovered angles as campaign suggestions. Uses the `document_type='competitor'` corpus plus live scans.
+7. **X / TikTok / Pinterest native adapter swap** — extend the Buffer → native swap (already planned LinkedIn → X → Meta) to X, TikTok, and Pinterest as each OAuth review clears, via the `plan_preferences.publish_via` per-channel flag.
+8. **Google Ads write access** — A/B copy generation, negative-keyword suggestions, and budget-reallocation recommendations (still human-approved, no autonomous spend). Gated on developer-token approval. Expands the V1 read-only `google-ads.ts` adapter.
+9. **Image attachment in Buffer posts** — attach generated images to Buffer posts, which requires a public R2 CDN URL. The CDN URL lands with the Chunk 9 Cloudflare deploy; the Buffer attachment wiring is done in V2 on top of it.
+10. **OSM full content pipeline** — campaigns, generation, and publishing for the OSM tenant (beyond the V1 corpus ingest) once Baran confirms OSM's brand voice. Makes OSM a fully-operated tenant, not just an ingested one.
 
 ### V3 — 3–6 months, LeadOrch integration + public SaaS
 The product becomes irreplaceable when the integration ships.
