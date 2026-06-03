@@ -205,3 +205,38 @@ END $$;
 --    scripts continue to run as the owner using the `app.rls_bypass = true`
 --    escape hatch above. The RLS verification test (`pnpm test:rls`)
 --    creates the non-bypass role and exercises the policy from it.
+
+-- 7. Production application role.
+--    In production, DATABASE_URL must use the hailmery_app role (NOBYPASSRLS) so
+--    RLS policies are enforced as a real backstop alongside the explicit
+--    tenant_id predicates in queries. The neondb_owner connection (BYPASSRLS) is
+--    only for migrations and admin tasks — never for the deployed Worker.
+--
+--    Connection string format (password set via the Neon dashboard):
+--      postgresql://hailmery_app:PASSWORD@host/db?sslmode=require
+
+-- Create application role with no RLS bypass.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT FROM pg_roles WHERE rolname = 'hailmery_app'
+  ) THEN
+    CREATE ROLE hailmery_app
+    NOSUPERUSER NOCREATEDB NOCREATEROLE
+    NOBYPASSRLS LOGIN;
+  END IF;
+END $$;
+
+-- Grant necessary permissions.
+GRANT USAGE ON SCHEMA marketing TO hailmery_app;
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON ALL TABLES IN SCHEMA marketing
+  TO hailmery_app;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA marketing
+  TO hailmery_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA marketing
+  GRANT SELECT, INSERT, UPDATE, DELETE
+  ON TABLES TO hailmery_app;
+
+-- The password will be set via Neon dashboard.
+-- Connection string format:
+-- postgresql://hailmery_app:PASSWORD@host/db

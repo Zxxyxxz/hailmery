@@ -1,4 +1,4 @@
-name = "hailmery"
+name = "hailmery-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
@@ -42,4 +42,6 @@ bucket_name = "hailmery-assets"
 preview_bucket_name = "hailmery-assets-preview"
 
 [vars]
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"
+# Image generation backend. options: gemini | gemini-flash | ideogram
+IMAGE_PROVIDER = "gemini"

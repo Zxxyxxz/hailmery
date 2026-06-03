@@ -12,8 +12,13 @@ export function setTenantId(id: string) {
   localStorage.setItem(TENANT_STORAGE_KEY, id)
 }
 
-// Base URL is empty in dev — Vite proxies /api to the Worker on :8787.
-export const api = axios.create({ baseURL: '' })
+// In dev, Vite proxies /api to the Worker on :8787 (see vite.config.ts), so the
+// localhost base resolves same-origin through the proxy. In production the
+// dashboard (Cloudflare Pages) and the Worker live on different origins, so the
+// build is pointed at the deployed Worker URL via VITE_API_URL (.env.production).
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8787'
+
+export const api = axios.create({ baseURL: API_BASE_URL })
 
 // Every request carries the active tenant in X-Tenant-ID; the Worker sets the
 // app.tenant_id session var from it before any RLS-scoped query runs.
