@@ -17,6 +17,8 @@ import { brandGuardian } from '../agents/guardian.js';
 import { runGenerationPipeline } from '../workflows/generation.js';
 import { publishSingleDraft } from '../workflows/publish.js';
 import type { PipelineEnv, GenerationParams, TriggerReason } from '../workflows/types.js';
+import { generateWeeklyIntelligenceBrief } from '../jobs/intelligence.js';
+import { generateSocial, SOCIAL_CHANNELS } from '../generation/social.js';
 
 type ApiEnv = {
   DATABASE_URL: string;
@@ -24,6 +26,8 @@ type ApiEnv = {
   OPENAI_API_KEY: string;
   SECRETS_KEY: string;
   IDEOGRAM_API_KEY?: string;
+  GOOGLE_API_KEY?: string;
+  IMAGE_PROVIDER?: string;
   R2_PUBLIC_BASE_URL?: string;
   GENERATION_WORKFLOW?: import('../workflows/types.js').WorkflowBinding;
   PUBLISH_WORKFLOW?: import('../workflows/types.js').WorkflowBinding;
@@ -52,6 +56,9 @@ export const api = new Hono<{ Bindings: ApiEnv }>();
 api.use('*', async (c, next) => {
   if (c.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = c.env.ANTHROPIC_API_KEY;
   if (c.env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = c.env.OPENAI_API_KEY;
+  if (c.env.GOOGLE_API_KEY) process.env.GOOGLE_API_KEY = c.env.GOOGLE_API_KEY;
+  if (c.env.IDEOGRAM_API_KEY) process.env.IDEOGRAM_API_KEY = c.env.IDEOGRAM_API_KEY;
+  if (c.env.IMAGE_PROVIDER) process.env.IMAGE_PROVIDER = c.env.IMAGE_PROVIDER;
   await next();
 });
 
@@ -769,4 +776,105 @@ api.get('/queue-status', async (c) => {
     published_today: Number(row?.published_today ?? 0),
     failed: Number(row?.failed ?? 0),
   });
+});
+
+// ── GET /api/intelligence ───────────────────────────────────────────
+// Latest weekly intelligence brief for the tenant — powers the
+// "This week's topics" card on the campaigns page. Returns { brief: null }
+// when none has been generated yet.
+
+function normalizeBrief(r: Row | null) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    weekOf: r.week_of,
+    status: r.status,
+    generatedAt: r.generated_at,
+    topics: Array.isArray(r.topics) ? r.topics : [],
+  };
+}
+
+api.get('/intelligence', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const row = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT id, week_of, topics, status, generated_at
+      FROM marketing.intelligence_briefs
+      WHERE tenant_id = ${tenantId}
+      ORDER BY week_of DESC
+      LIMIT 1
+    `);
+    return r.rows[0] ?? null;
+  });
+
+  return c.json({ brief: normalizeBrief(row) });
+});
+
+// ── POST /api/intelligence/refresh ──────────────────────────────────
+// Re-runs the weekly research for the current week on demand (the card's
+// "Refresh" button). Awaits the live model + web-search call and returns the
+// fresh brief.
+
+api.post('/intelligence/refresh', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+  try {
+    const result = await generateWeeklyIntelligenceBrief({ db, tenantId });
+    const row = await withTenantDb(db, tenantId, async (tx) => {
+      const r = await tx.execute<Row>(sql`
+        SELECT id, week_of, topics, status, generated_at
+        FROM marketing.intelligence_briefs
+        WHERE id = ${result.briefId} AND tenant_id = ${tenantId} LIMIT 1
+      `);
+      return r.rows[0] ?? null;
+    });
+    return c.json({ brief: normalizeBrief(row) });
+  } catch (e) {
+    return err(c, 500, 'intelligence_failed', (e as Error).message);
+  }
+});
+
+// ── POST /api/generate-now ──────────────────────────────────────────
+// One-shot generation from a topic — powers the "Create now" modal opened from
+// a topic card. Runs the social generator inline and returns the pending draft.
+// Body: { topic, channel?, voiceModifier? }. channel defaults to linkedin.
+
+api.post('/generate-now', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const body = await c.req.json<Record<string, any>>().catch(() => null);
+  const topic = typeof body?.topic === 'string' ? body.topic.trim() : '';
+  if (!topic) return err(c, 422, 'bad_input', 'topic is required');
+
+  const channel = (typeof body?.channel === 'string' ? body.channel : 'linkedin').toLowerCase();
+  if (!(SOCIAL_CHANNELS as readonly string[]).includes(channel)) {
+    return err(c, 422, 'bad_channel', `channel must be one of: ${SOCIAL_CHANNELS.join(', ')}`);
+  }
+  const voiceModifier =
+    typeof body?.voiceModifier === 'string' && body.voiceModifier.trim()
+      ? body.voiceModifier.trim()
+      : undefined;
+
+  const db = makeDb(c.env.DATABASE_URL);
+  try {
+    const res = await generateSocial({ db, tenantId, topic, channel, voiceModifier });
+    return c.json(
+      {
+        draftId: res.draftId,
+        channel: res.channel,
+        text: res.text,
+        guardianScore: res.guardianScore,
+        flaggedCount: res.flaggedCount,
+      },
+      201,
+    );
+  } catch (e) {
+    return err(c, 500, 'generate_now_failed', (e as Error).message);
+  }
 });

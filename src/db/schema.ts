@@ -80,6 +80,12 @@ export const draftStatus = marketing.enum('draft_status', [
 
 export const metricsWindow = marketing.enum('metrics_window', ['1h', '24h', '7d', '30d']);
 
+export const intelligenceBriefStatus = marketing.enum('intelligence_brief_status', [
+  'pending',
+  'reviewed',
+  'used',
+]);
+
 // ──────────────────────────────────────────────────────────────────
 // Tables — every table starts with `tenant_id` and has RLS applied
 // in src/db/rls.sql.
@@ -320,6 +326,23 @@ export const metricsQueue = marketing.table('metrics_queue', {
   draftIdx: index('metrics_queue_draft_idx').on(t.draftId),
 }));
 
+// Weekly intelligence briefs — the Monday 08:00 UTC job (src/jobs/intelligence.ts)
+// researches the past 7 days of AI-security news with Claude + web search and
+// writes one row per tenant per week: a jsonb array of 5-7 suggested topics the
+// dashboard surfaces as a "This week's topics" card. status tracks operator
+// review (pending → reviewed → used).
+export const intelligenceBriefs = marketing.table('intelligence_briefs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  weekOf: date('week_of').notNull(),
+  topics: jsonb('topics').notNull().default([]),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+  status: intelligenceBriefStatus('status').notNull().default('pending'),
+}, (t) => ({
+  tenantIdx: index('intelligence_briefs_tenant_idx').on(t.tenantId),
+  weekUq: uniqueIndex('intelligence_briefs_tenant_week_uq').on(t.tenantId, t.weekOf),
+}));
+
 // ──────────────────────────────────────────────────────────────────
 // Type exports for downstream code
 // ──────────────────────────────────────────────────────────────────
@@ -338,3 +361,4 @@ export type ContentMetric = typeof contentMetrics.$inferSelect;
 export type SyncLogEntry = typeof syncLog.$inferSelect;
 export type Asset = typeof assets.$inferSelect;
 export type MetricsQueueEntry = typeof metricsQueue.$inferSelect;
+export type IntelligenceBrief = typeof intelligenceBriefs.$inferSelect;

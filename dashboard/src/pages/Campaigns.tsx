@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Plus,
   Pause,
@@ -8,13 +8,27 @@ import {
   Rocket,
   AlertTriangle,
   Loader2,
+  Newspaper,
+  RefreshCw,
+  Sparkles,
+  CheckCircle2,
+  ArrowRight,
 } from 'lucide-react'
-import { useCampaigns, useCreateCampaign, usePatchCampaign } from '@/lib/queries'
+import {
+  useCampaigns,
+  useCreateCampaign,
+  usePatchCampaign,
+  useIntelligence,
+  useRefreshIntelligence,
+  useGenerateNow,
+} from '@/lib/queries'
 import type {
   Campaign,
   CampaignGoalType,
   CampaignType,
   CreateCampaignInput,
+  IntelligenceTopic,
+  TopicUrgency,
 } from '@/lib/types'
 import { ChannelIcon } from '@/components/ChannelIcon'
 import { SELECTABLE_CHANNELS } from '@/lib/channels'
@@ -56,6 +70,7 @@ const TYPE_LABEL: Record<CampaignType, string> = {
 export default function Campaigns() {
   const { data: campaigns, isLoading, isError } = useCampaigns()
   const [open, setOpen] = useState(false)
+  const [topic, setTopic] = useState<IntelligenceTopic | null>(null)
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -71,6 +86,8 @@ export default function Campaigns() {
           New Campaign
         </Button>
       </header>
+
+      <TopicsCard onPick={(t) => setTopic(t)} />
 
       {isError && (
         <div className="glass-sm flex items-center gap-3 border-red-500/20 p-5 text-sm text-red-300">
@@ -96,7 +113,246 @@ export default function Campaigns() {
       )}
 
       <NewCampaignDialog open={open} onClose={() => setOpen(false)} />
+      <CreateNowDialog topic={topic} onClose={() => setTopic(null)} />
     </div>
+  )
+}
+
+// ── This week's topics (weekly intelligence brief) ──────────────────
+
+const URGENCY_VARIANT: Record<TopicUrgency, BadgeProps['variant']> = {
+  breaking: 'red',
+  trending: 'amber',
+  evergreen: 'green',
+}
+
+function TopicsCard({ onPick }: { onPick: (t: IntelligenceTopic) => void }) {
+  const { data: brief, isLoading, isError } = useIntelligence()
+  const refresh = useRefreshIntelligence()
+
+  const topics = brief?.topics ?? []
+  const weekLabel = brief?.weekOf
+    ? new Date(brief.weekOf).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+      })
+    : null
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500/15">
+            <Newspaper className="h-4 w-4 text-cyan-300" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-gray-100">
+              This week&apos;s topics
+            </h2>
+            <p className="text-xs text-gray-500">
+              {weekLabel
+                ? `AI-security intelligence · week of ${weekLabel}`
+                : 'AI-security intelligence brief'}
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => refresh.mutate()}
+          disabled={refresh.isPending}
+        >
+          {refresh.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Refresh
+        </Button>
+      </div>
+
+      {(isLoading || refresh.isPending) && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-28 rounded-xl" />
+          ))}
+        </div>
+      )}
+
+      {isError && !refresh.isPending && (
+        <p className="mt-4 text-sm text-red-300">
+          Failed to load this week&apos;s topics.
+        </p>
+      )}
+
+      {!isLoading && !isError && !refresh.isPending && topics.length === 0 && (
+        <div className="mt-4 rounded-xl border border-dashed border-white/[0.08] p-6 text-center text-sm text-gray-500">
+          No intelligence brief yet. Hit{' '}
+          <span className="text-gray-300">Refresh</span> to research this
+          week&apos;s AI-security news.
+        </div>
+      )}
+
+      {!refresh.isPending && topics.length > 0 && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {topics.map((t, i) => (
+            <button
+              key={i}
+              onClick={() => onPick(t)}
+              className="group flex flex-col rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 text-left transition-colors hover:border-cyan-500/30 hover:bg-white/[0.04]"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant={URGENCY_VARIANT[t.urgency]}>{t.urgency}</Badge>
+                <span className="text-[10px] uppercase tracking-wide text-gray-600">
+                  {t.suggested_channel}
+                </span>
+              </div>
+              <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-gray-100">
+                {t.topic}
+              </h3>
+              <p className="mt-1 line-clamp-2 text-xs text-gray-500">
+                {t.why_relevant || t.source_summary}
+              </p>
+              <span className="mt-2 inline-flex items-center gap-1 text-xs text-cyan-400 opacity-0 transition-opacity group-hover:opacity-100">
+                Create now <ArrowRight className="h-3 w-3" />
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ── Create now (one-shot generation from a topic) ───────────────────
+
+const NOW_CHANNELS = [
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'x', label: 'X' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'tiktok', label: 'TikTok' },
+  { key: 'gbp', label: 'Google Business' },
+]
+
+function defaultChannel(suggested: string | undefined): string {
+  return NOW_CHANNELS.some((c) => c.key === suggested) ? (suggested as string) : 'linkedin'
+}
+
+function CreateNowDialog({
+  topic,
+  onClose,
+}: {
+  topic: IntelligenceTopic | null
+  onClose: () => void
+}) {
+  const generate = useGenerateNow()
+  const [topicText, setTopicText] = useState('')
+  const [tone, setTone] = useState('')
+  const [channel, setChannel] = useState('linkedin')
+
+  // Re-seed the form whenever a new topic is picked.
+  useEffect(() => {
+    if (!topic) return
+    setTopicText(topic.topic)
+    setTone(topic.angle)
+    setChannel(defaultChannel(topic.suggested_channel))
+    generate.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topic])
+
+  function close() {
+    onClose()
+  }
+
+  function submit() {
+    generate.mutate({
+      topic: topicText.trim(),
+      channel,
+      voiceModifier: tone.trim() || undefined,
+    })
+  }
+
+  const result = generate.data
+
+  return (
+    <Dialog
+      open={topic !== null}
+      onClose={close}
+      className="max-w-lg"
+      title="Create now"
+      description="Generate a draft from this topic — it lands in the review queue."
+    >
+      <div className="space-y-4 p-6 pt-2">
+        {result ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-sm text-emerald-300">
+              <CheckCircle2 className="h-5 w-5" />
+              Draft created — guardian score{' '}
+              {result.guardianScore.toFixed(2)}.
+            </div>
+            <div className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-sm text-gray-300">
+              {result.text}
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={close}>Done</Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <Label>Topic</Label>
+              <Input
+                value={topicText}
+                onChange={(e) => setTopicText(e.target.value)}
+                placeholder="Topic to write about…"
+              />
+            </div>
+            <div>
+              <Label>Tone override (angle)</Label>
+              <Textarea
+                rows={3}
+                value={tone}
+                onChange={(e) => setTone(e.target.value)}
+                placeholder="The specific point of view to take…"
+              />
+            </div>
+            <div>
+              <Label>Channel</Label>
+              <Select value={channel} onChange={(e) => setChannel(e.target.value)}>
+                {NOW_CHANNELS.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            {generate.isError && (
+              <div className="text-sm text-red-400">
+                Generation failed. Please try again.
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={close}>
+                Cancel
+              </Button>
+              <Button
+                onClick={submit}
+                disabled={!topicText.trim() || generate.isPending}
+              >
+                {generate.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                Generate draft
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </Dialog>
   )
 }
 

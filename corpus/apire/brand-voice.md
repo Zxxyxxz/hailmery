@@ -229,6 +229,28 @@ Product-led:
 
 ---
 
+## LinkedIn Performance Learnings
+Source: Analysis of 102 published APIRE LinkedIn posts (Buffer analytics, May 2026)
+
+Key finding: Technical-specific practitioner voice consistently outperforms broad business claims in engagement rate for APIRE's current LinkedIn audience.
+
+WHAT WORKS (higher engagement rate):
+- Specific technical actions: "swap api.openai.com to app.apire.io"
+- Exact numbers: "950+ DLP rules", "27+ AI-specific threats", "sub-millisecond latency per stage"
+- Practitioner-to-practitioner voice: "As practitioners, we deliver..."
+- Specific regulatory framing with named deadlines: "NIS2 deadlines", "EU AI Act Article 10"
+
+WHAT UNDERPERFORMS (lower engagement rate):
+- Generic business claims: "enterprise-ready solution"
+- Abstract value propositions without specific numbers
+- Broad market framing without connecting to a specific action or moment
+
+VISUAL FINDINGS:
+- Images showing a person coding/working technically outperformed generic server room images in engagement rate
+- Dark environment with screen-glow-as-light-source aesthetic resonates with the technical audience
+
+---
+
 ## Contradictions / things to flag
 
 - **"Process Everything. Keep Nothing." vs "Process Everything. Store Nothing.":** Both appear; prefer "Keep Nothing" in technical contexts, "Store Nothing" in marketing.

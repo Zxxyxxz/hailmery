@@ -39,6 +39,27 @@ CREATE INDEX IF NOT EXISTS metrics_queue_tenant_idx ON marketing.metrics_queue (
 CREATE INDEX IF NOT EXISTS metrics_queue_due_idx    ON marketing.metrics_queue (fetch_at) WHERE fetched = false;
 CREATE INDEX IF NOT EXISTS metrics_queue_draft_idx  ON marketing.metrics_queue (draft_id, "window");
 
+-- 1c. Weekly intelligence briefs (src/jobs/intelligence.ts). Idempotent, and
+--     placed BEFORE the RLS enable/policy loops so the new table automatically
+--     picks up the uniform tenant_isolation policy.
+DO $$ BEGIN
+  CREATE TYPE marketing.intelligence_brief_status AS ENUM ('pending', 'reviewed', 'used');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS marketing.intelligence_briefs (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    uuid NOT NULL,
+  week_of      date NOT NULL,
+  topics       jsonb NOT NULL DEFAULT '[]'::jsonb,
+  generated_at timestamptz NOT NULL DEFAULT now(),
+  status       marketing.intelligence_brief_status NOT NULL DEFAULT 'pending'
+);
+CREATE INDEX IF NOT EXISTS intelligence_briefs_tenant_idx
+  ON marketing.intelligence_briefs (tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS intelligence_briefs_tenant_week_uq
+  ON marketing.intelligence_briefs (tenant_id, week_of);
+
 -- 2. HNSW index for fast cosine ANN on document_chunks.embedding.
 --    Cosine is what text-embedding-3-small ships normalized for.
 --    Only run if the table actually exists (lets us call this migration

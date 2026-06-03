@@ -193,11 +193,21 @@ async function runEmail(tenant: { id: string; slug: string }, type: string, topi
 
 // ── image ───────────────────────────────────────────────────────────
 async function runImage(tenant: { id: string; slug: string }, draftId: string, type: string) {
-  console.log(`[gen image] draft=${draftId} type=${type} — building Ideogram prompt via Claude Haiku 4.5...`);
+  console.log(`[gen image] draft=${draftId} type=${type} — classifying + building prompt via Claude Sonnet 4.6...`);
   const res = await generateImage({ db, tenantId: tenant.id, draftId, imageType: type });
-  console.log(`\n${hr}\nIDEOGRAM PROMPT (${res.imageType}, ${res.aspectRatio})\n${hr}\n${res.prompt}\n${hr}\n`);
+  console.log(
+    `[gen image] category=${res.categoryLetter} (${res.category}) provider=${res.provider} model=${res.model}`,
+  );
+  const v = res.validation;
+  console.log(
+    `[gen image] validation ${v.passed ? 'PASS' : 'FAIL'} — ` +
+      `no_text=${v.checks.noText} no_brand_names=${v.checks.noBrandNames} ` +
+      `words(${v.wordCount})=${v.checks.wordCount} brand_hex=${v.checks.brandHex}` +
+      (v.failures.length ? ` failures=[${v.failures.join('; ')}]` : ''),
+  );
+  console.log(`\n${hr}\nIMAGE PROMPT (${res.imageType}, ${res.aspectRatio})\n${hr}\n${res.prompt}\n${hr}\n`);
   if (res.skipped) {
-    console.warn('[gen image] IDEOGRAM_API_KEY not set — API call skipped, placeholder returned.');
+    console.warn(`[gen image] ${res.provider} key not set — API call skipped, placeholder returned.`);
   } else {
     console.log(`[gen image] stored to ${res.storedTo}; r2_key=${res.r2Key}`);
   }

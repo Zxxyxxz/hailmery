@@ -16,6 +16,7 @@ import { brandVoicePage, brandVoiceSave } from './routes/settings.js';
 import { api } from './routes/api.js';
 import { runPublishTick, runGenerationTick, runNightlyTick } from './jobs/scheduler.js';
 import type { SchedulerEnv } from './jobs/scheduler.js';
+import { runIntelligenceTick } from './jobs/intelligence.js';
 import {
   processSendGridWebhookEvents,
   resolveMailSyncDeps,
@@ -34,6 +35,8 @@ type Env = {
   SECRETS_KEY: string;
   HUBSPOT_EVENT_TEMPLATE_ID?: string;
   IDEOGRAM_API_KEY?: string;
+  GOOGLE_API_KEY?: string;
+  IMAGE_PROVIDER?: string;
   R2_PUBLIC_BASE_URL?: string;
   ENVIRONMENT?: string;
   // Cloudflare Workflow bindings (see wrangler.toml [[workflows]]).
@@ -165,6 +168,9 @@ export default {
         break;
       case '0 3 * * *':
         ctx.waitUntil(runNightlyTick(schedEnv));
+        break;
+      case '0 8 * * 1':
+        ctx.waitUntil(runIntelligenceTick(schedEnv));
         break;
       default:
         console.warn(`[scheduled] no handler for cron '${event.cron}'`);

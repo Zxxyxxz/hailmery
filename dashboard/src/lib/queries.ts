@@ -11,6 +11,9 @@ import type {
   DocumentRow,
   Draft,
   DraftStatus,
+  GenerateNowInput,
+  GenerateNowResult,
+  IntelligenceBrief,
   PlatformConnection,
   PublishNowResult,
   QueueStatus,
@@ -204,6 +207,54 @@ export function useDocuments() {
     queryFn: async () => {
       const res = await api.get<{ documents: DocumentRow[] }>('/api/documents')
       return res.data.documents
+    },
+  })
+}
+
+// ── Weekly intelligence brief ───────────────────────────────────────
+
+export function useIntelligence() {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['intelligence', currentId],
+    enabled: !!currentId,
+    queryFn: async () => {
+      const res = await api.get<{ brief: IntelligenceBrief | null }>(
+        '/api/intelligence',
+      )
+      return res.data.brief
+    },
+  })
+}
+
+/** Re-runs the weekly research on demand (the card's Refresh button). */
+export function useRefreshIntelligence() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{ brief: IntelligenceBrief | null }>(
+        '/api/intelligence/refresh',
+      )
+      return res.data.brief
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['intelligence', currentId] }),
+  })
+}
+
+/** One-shot generation from a topic — powers the "Create now" modal. */
+export function useGenerateNow() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async (input: GenerateNowInput) => {
+      const res = await api.post<GenerateNowResult>('/api/generate-now', input)
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drafts', currentId] })
+      qc.invalidateQueries({ queryKey: ['queue-status', currentId] })
     },
   })
 }

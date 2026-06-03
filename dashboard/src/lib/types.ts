@@ -180,3 +180,38 @@ export interface ApiError {
   error: string
   code: string
 }
+
+// ── Weekly intelligence brief ───────────────────────────────────────
+
+export type TopicUrgency = 'breaking' | 'trending' | 'evergreen'
+
+export interface IntelligenceTopic {
+  topic: string
+  angle: string
+  urgency: TopicUrgency
+  source_summary: string
+  suggested_channel: string
+  why_relevant: string
+}
+
+export interface IntelligenceBrief {
+  id: string
+  weekOf: string
+  status: 'pending' | 'reviewed' | 'used'
+  generatedAt: string
+  topics: IntelligenceTopic[]
+}
+
+export interface GenerateNowInput {
+  topic: string
+  channel?: string
+  voiceModifier?: string
+}
+
+export interface GenerateNowResult {
+  draftId: string
+  channel: string
+  text: string
+  guardianScore: number
+  flaggedCount: number
+}

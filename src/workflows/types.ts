@@ -22,6 +22,8 @@ export interface PipelineEnv {
   OPENAI_API_KEY: string;
   SECRETS_KEY: string;
   IDEOGRAM_API_KEY?: string;
+  GOOGLE_API_KEY?: string;
+  IMAGE_PROVIDER?: string;
   R2_PUBLIC_BASE_URL?: string;
   HUBSPOT_EVENT_TEMPLATE_ID?: string;
   ASSETS?: R2Like;
@@ -47,6 +49,8 @@ export function mirrorEnvToProcess(env: PipelineEnv): void {
   if (env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
   if (env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = env.OPENAI_API_KEY;
   if (env.IDEOGRAM_API_KEY) process.env.IDEOGRAM_API_KEY = env.IDEOGRAM_API_KEY;
+  if (env.GOOGLE_API_KEY) process.env.GOOGLE_API_KEY = env.GOOGLE_API_KEY;
+  if (env.IMAGE_PROVIDER) process.env.IMAGE_PROVIDER = env.IMAGE_PROVIDER;
   if (env.R2_PUBLIC_BASE_URL) process.env.R2_PUBLIC_BASE_URL = env.R2_PUBLIC_BASE_URL;
 }
 

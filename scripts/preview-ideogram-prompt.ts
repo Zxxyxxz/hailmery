@@ -17,7 +17,7 @@ import { embedOne } from '../src/corpus/embedder.js';
 import {
   ASPECT,
   IMAGE_TYPES,
-  buildIdeogramPrompt,
+  buildImagePrompt,
   conceptFromPayload,
   type ImageType,
 } from '../src/generation/image.js';
@@ -78,11 +78,11 @@ async function main() {
   console.log(`SOURCES      : ${[...new Set(loaded.visual.map((c) => c.source_filename))].join(', ') || '(none)'}`);
   console.log(`${hr}\n`);
 
-  console.log('[preview] calling buildIdeogramPrompt() — Haiku 4.5 — NO Ideogram call...\n');
+  console.log('[preview] calling buildImagePrompt() — Sonnet 4.6 classify + write — NO image API call...\n');
 
-  // ── STEP 1 ONLY: build the prompt. STEP 2 (callIdeogram) is intentionally
-  //    not invoked. ───────────────────────────────────────────────────────
-  const prompt = await buildIdeogramPrompt({
+  // ── STEP 1 ONLY: classify + build the prompt. STEP 2 (the provider call) is
+  //    intentionally not invoked. ─────────────────────────────────────────
+  const built = await buildImagePrompt({
     conceptText,
     channel: draft.channel,
     visualGuidelines,
@@ -90,9 +90,17 @@ async function main() {
     dims,
     ratio,
   });
+  const { prompt, categoryLetter, category, validation } = built;
 
   console.log(`${hr}`);
-  console.log(`IDEOGRAM PROMPT (${imageType}, ${ratio}) — ${prompt.length} chars`);
+  console.log(`CATEGORY     : ${categoryLetter} (${category})`);
+  console.log(
+    `VALIDATION   : ${validation.passed ? 'PASS' : 'FAIL'} — no_text=${validation.checks.noText} ` +
+      `no_brand_names=${validation.checks.noBrandNames} words(${validation.wordCount})=${validation.checks.wordCount} ` +
+      `brand_hex=${validation.checks.brandHex}` +
+      (validation.failures.length ? ` failures=[${validation.failures.join('; ')}]` : ''),
+  );
+  console.log(`IMAGE PROMPT (${imageType}, ${ratio}) — ${prompt.length} chars`);
   console.log(`${hr}`);
   console.log(prompt);
   console.log(`${hr}`);

@@ -60,30 +60,47 @@ describe('BufferAdapter', () => {
   });
 
   describe('publish', () => {
-    it('posts an update with text and image', async () => {
+    it('posts a createPost GraphQL mutation (shareNow) with the channel id and text', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse({ updates: [{ id: 'upd_abc' }] }),
+        jsonResponse({
+          data: {
+            createPost: {
+              __typename: 'PostActionSuccess',
+              post: {
+                id: 'upd_abc',
+                text: 'Hello world',
+                externalLink: null,
+                status: 'sent',
+                channelId: 'fb_123',
+              },
+            },
+          },
+        }),
       );
 
       const result = await adapter.publish(makeDraft());
 
       expect(mockFetch).toHaveBeenCalledOnce();
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe('https://api.bufferapp.com/1/updates/create.json');
+      expect(url).toBe('https://api.buffer.com/graphql');
       expect(init.method).toBe('POST');
       expect(init.headers).toHaveProperty('Authorization', 'Bearer buf_test_token');
 
       const body = JSON.parse(init.body as string);
-      expect(body.profile_ids).toEqual(['fb_123']);
-      expect(body.text).toBe('Hello world');
-      expect(body.media).toEqual({ photo: 'https://img.example.com/hero.png' });
+      expect(body.query).toContain('createPost');
+      expect(body.variables.input.channelId).toBe('fb_123');
+      expect(body.variables.input.text).toBe('Hello world');
+      expect(body.variables.input.mode).toBe('shareNow');
+      expect(body.variables.input.assets).toEqual([]);
 
       expect(result.externalId).toBe('upd_abc');
     });
 
     it('throws for unmapped channel', async () => {
       const draft = makeDraft({ channel: 'snapchat' });
-      await expect(adapter.publish(draft)).rejects.toThrow('No Buffer profile ID');
+      await expect(adapter.publish(draft)).rejects.toThrow(
+        'No Buffer channel/profile id mapped',
+      );
     });
   });
 

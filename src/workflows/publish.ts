@@ -288,7 +288,8 @@ export async function publishDraft(env: PipelineEnv, draft: DueDraft): Promise<P
     // runtimes only). Awaited but isolated — an image failure never unwinds a
     // successful publish.
     const hasImage = Object.keys(draft.assets ?? {}).length > 0;
-    if (!hasImage && IMAGE_BACKFILL_CHANNELS.has(draft.channel.toLowerCase()) && env.IDEOGRAM_API_KEY) {
+    const imageKeyPresent = !!(env.GOOGLE_API_KEY || env.IDEOGRAM_API_KEY);
+    if (!hasImage && IMAGE_BACKFILL_CHANNELS.has(draft.channel.toLowerCase()) && imageKeyPresent) {
       try {
         await generateImage({
           db,

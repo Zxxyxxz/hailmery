@@ -14,11 +14,12 @@ compatibility_flags = ["nodejs_compat"]
 enabled = true
 
 # Scheduled jobs — routed by cron expression in src/index.ts scheduled().
-#   */15 * * * *  publish tick     → PublishWorkflow (all active tenants)
-#   0   */6 * * * generation tick  → GenerationWorkflow per under-target campaign
-#   0   3   * * * nightly tick     → mail sync + metrics placeholder
+#   */15 * * * *  publish tick      → PublishWorkflow (all active tenants)
+#   0   */6 * * * generation tick   → GenerationWorkflow per under-target campaign
+#   0   3   * * * nightly tick      → mail sync + metrics placeholder
+#   0   8   * * 1 intelligence tick → weekly intelligence brief (Mon 08:00 UTC)
 [triggers]
-crons = ["*/15 * * * *", "0 */6 * * *", "0 3 * * *"]
+crons = ["*/15 * * * *", "0 */6 * * *", "0 3 * * *", "0 8 * * 1"]
 
 # Cloudflare Workflows — the autonomous generation + publish pipelines.
 # The class_name must match a named export from src/index.ts (the main module).
