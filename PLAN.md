@@ -147,7 +147,8 @@ Every external system hailmery talks to. Each row is an adapter file under `src/
 | Vertex AI | AI (image/video) | REST | Service account | n/a | Imagen 4, Veo 3.1 Fast | Photoreal + iteration video |
 | fal.ai | AI (image/video) | REST | API key | n/a | Kling 3.0, FLUX.2 | Primary video + open-model image fallback |
 | Replicate | AI (image) | REST | API key | n/a | FLUX.2 [pro], LoRA fine-tunes | Brand-LoRA path at H3 |
-| Ideogram | AI (image) | REST | API key | n/a | Ideogram 3.0 | Primary image gen (text-in-image) |
+| Google Gemini | AI (image) | REST (generativelanguage) | API key | n/a | Gemini 3 Pro Image / 2.5 Flash Image | **Primary** image gen |
+| Ideogram | AI (image) | REST | API key | n/a | Ideogram 3.0 | **Fallback** image gen (text-in-image) |
 
 ---
 
@@ -249,7 +250,7 @@ The `content_drafts.status` transitions are explicit functions in `src/queue/tra
 | `hailmery/src/db/rls.sql` | RLS policy DDL applied per migration |
 | `hailmery/src/generation/blog.ts` | RAG + prompt-cached Sonnet 4.6; **H1 deliverable hinges on this file** |
 | `hailmery/src/generation/social.ts` | Per-platform copy variants |
-| `hailmery/src/generation/image.ts` | Router: Gemini 3 Pro Image (primary, text overlay) / Ideogram (text-in-image fallback) / Imagen (photoreal) / FLUX (security imagery) |
+| `hailmery/src/generation/image.ts` | Router: Gemini 3 Pro Image (default) / Gemini 2.5 Flash Image (fast tier) / Ideogram 3.0 (legacy fallback) |
 | `hailmery/src/generation/video.ts` | Router: Kling (multi-shot) / Veo (iteration). No Sora. |
 | `hailmery/src/generation/email.ts` | Composes campaign emails for SendGrid |
 | `hailmery/src/agents/strategist.ts` | Strategist (Claude Sonnet 4.6); reads unified analytics + corpus + campaign brief; outputs JSON brief |
@@ -442,7 +443,7 @@ The product becomes irreplaceable when the integration ships.
 | Orchestrator | Custom Cloudflare Workflows. No n8n. |
 | Paid ads V1 | Read-only Google Ads adapter. No automated spend until V2 + developer token approval. |
 | Social bridge | Buffer ($5/channel/mo) temporary during OAuth review window. Swap to direct adapters per platform as reviews clear. |
-| Primary content AI | Claude Sonnet 4.6 (text); Opus 4.7 (quarterly strategy); Haiku 4.5 (classification + guardian). Ideogram 3.0 (image, text-in-image wins); Imagen 4 (photoreal); FLUX.2 [pro] (open-model fallback). Kling 3.0 Standard (video, multi-shot); Veo 3.1 Fast (iteration). **Sora REMOVED — API dies 2026-09-24.** |
+| Primary content AI | Claude Sonnet 4.6 (text); Opus 4.7 (quarterly strategy); Haiku 4.5 (classification + guardian). Gemini 3 Pro Image (image, primary); Ideogram 3.0 (text-in-image fallback); Imagen 4 (photoreal); FLUX.2 [pro] (open-model fallback). Kling 3.0 Standard (video, multi-shot); Veo 3.1 Fast (iteration). **Sora REMOVED — API dies 2026-09-24.** |
 | Campaign model | Campaigns are top-level. Types: `product_launch / lead_gen / evergreen / event / reactive`. Default evergreen campaign auto-created per tenant. Pillars are a property on campaigns (`campaigns.pillar_id`), not a competing concept. |
 | Brand corpus | Git-backed markdown for APIRE/OSM bootstrap + user upload pipeline (PDF/DOCX/MD/images) for all tenants. |
 | Brand bootstrapping (no golden examples) | Hybrid: ingest existing docs for factual grounding + 60-draft AI voice-calibration flow → user picks 10–20 → those become the tenant's golden set. |

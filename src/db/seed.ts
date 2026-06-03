@@ -25,7 +25,7 @@ const SEED = [
   {
     slug: 'osm',
     name: 'OSM',
-    domain: 'osm.com',
+    domain: 'ofsecman.io',
     brandVoice: {
       audience:
         'security leaders and practitioners at enterprises and SMBs — CISOs, security operations managers, DevSecOps engineers, and compliance officers, plus budget-constrained CFO/IT directors and government/military (air-gapped) buyers',

@@ -154,7 +154,7 @@
 
 - **Agent naming drift:** "Software Layer Security AI" vs. "Source Code AI"; "Container & Cloud Security AI" vs. "Container AI." Prefer the full names; note the short forms are equivalents.
 - **A-P.ai / Apieye / APIRE.IO:** the cloud-AI proxy is referred to by all three names across docs. Treat as the same companion service; prefer **APIRE.IO** in marketing, note **A-P.ai / Apieye** as the proxy alias. Confirm canonical spelling with the owner.
-- **Domain:** marketing uses **www.ofsecman.io**; the DB seed uses placeholder **osm.com** — `ofsecman.io` is the real brand domain.
+- **Domain:** canonical brand domain is **ofsecman.io** (marketing site at **www.ofsecman.io**); the OSM site record and DB seed now both use `ofsecman.io`.
 - **Customer evidence:** the corpus contains **no verifiable named-customer case studies**. Do not invent them. (See [[entities]] → "Do not cite.")
 - **94% vs 80%:** "up to 94%" of *alert noise* triaged; "80%+" of *repetitive work* automated — these are different claims; don't conflate.
 

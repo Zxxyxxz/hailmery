@@ -293,7 +293,7 @@
 
 - www.ofsecman.io
 - contact@ofsecman.io
-- osm.com (DB seed placeholder only — NOT the real brand domain; use ofsecman.io)
+- ofsecman.io (canonical brand domain — OSM site record + DB seed)
 
 ---
 
