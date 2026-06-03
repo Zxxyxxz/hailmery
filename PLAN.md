@@ -84,7 +84,7 @@ The single most important decision: **match LeadOrch's stack exactly** so integr
 
 ### Content generation (Apr–May 2026 pricing)
 - **Text**: **Claude Sonnet 4.6** ($3/$15 per Mtok, 1M ctx, prompt caching 90% off cached input) is the workhorse. **Claude Opus 4.7** for the quarterly Marketing Strategy regeneration only. **Claude Haiku 4.5** ($1/$5) for cheap classification and the Brand Guardian LLM-as-judge.
-- **Images**: **Gemini 3 Pro Image** primary — strongest prompt adherence and reliable in-image text rendering; requires a billing-enabled Google project (free tier is 0/429). **Ideogram 3.0** ($0.06/image) as the fallback for text-in-image when Gemini is unavailable or rate-limited. **Imagen 4** ($0.04) for photoreal hero imagery. **FLUX.2 [pro]** via Replicate ($0.015) as the open-model fallback for security-domain content that Imagen sometimes rejects.
+- **Images**: **Gemini 3 Pro Image** primary — strongest prompt adherence and reliable in-image text rendering; requires a billing-enabled Google project (free tier is 0/429). **Ideogram 3.0** ($0.06/image) as the fallback for text-in-image when Gemini is unavailable or rate-limited. **Imagen 4** ($0.04) for photoreal hero imagery *(planned, not yet implemented)*. **FLUX.2 [pro]** via Replicate ($0.015) as the open-model fallback for security-domain content that Imagen sometimes rejects *(planned, not yet implemented)*.
 - **Video**: **Kling 3.0 Standard** ($0.084/sec, multi-shot up to 15s) primary. **Veo 3.1 Fast** ($0.15/sec) as iteration engine. **Sora REMOVED** — OpenAI is shutting down the Sora API on 2026-09-24; do not build on it.
 - **Budget envelope**: ~$16/mo H1 cadence (50 blog/100 image/20 video); ~$80–150/mo H2 across two tenants; per-tenant cap default $50/mo, configurable up via `marketing.tenants.monthly_budget_cents`.
 
@@ -144,9 +144,9 @@ Every external system hailmery talks to. Each row is an adapter file under `src/
 | OSM/APIRE rebuilt blog | CMS (own sites) | Internal (writes to shared Neon `marketing.content_drafts` → site reads at request time) | Internal auth | Existing posts | New posts | Zero-glue path once rebuilds ship |
 | Anthropic | AI (text) | Messages API + prompt caching | API key | n/a | Claude Sonnet/Opus/Haiku calls | Strategist, writer, guardian |
 | OpenAI | AI (text/embeddings) | Responses + Embeddings | API key | n/a | GPT for short-form, `text-embedding-3-small` for corpus | Short-form + retrieval |
-| Vertex AI | AI (image/video) | REST | Service account | n/a | Imagen 4, Veo 3.1 Fast | Photoreal + iteration video |
-| fal.ai | AI (image/video) | REST | API key | n/a | Kling 3.0, FLUX.2 | Primary video + open-model image fallback |
-| Replicate | AI (image) | REST | API key | n/a | FLUX.2 [pro], LoRA fine-tunes | Brand-LoRA path at H3 |
+| Vertex AI | AI (image/video) | REST | Service account | n/a | Imagen 4 *(planned, not yet implemented)*, Veo 3.1 Fast | Photoreal + iteration video |
+| fal.ai | AI (image/video) | REST | API key | n/a | Kling 3.0, FLUX.2 *(planned, not yet implemented)* | Primary video + open-model image fallback |
+| Replicate | AI (image) | REST | API key | n/a | FLUX.2 [pro] *(planned, not yet implemented)*, LoRA fine-tunes | Brand-LoRA path at H3 |
 | Google Gemini | AI (image) | REST (generativelanguage) | API key | n/a | Gemini 3 Pro Image / 2.5 Flash Image | **Primary** image gen |
 | Ideogram | AI (image) | REST | API key | n/a | Ideogram 3.0 | **Fallback** image gen (text-in-image) |
 
@@ -443,7 +443,7 @@ The product becomes irreplaceable when the integration ships.
 | Orchestrator | Custom Cloudflare Workflows. No n8n. |
 | Paid ads V1 | Read-only Google Ads adapter. No automated spend until V2 + developer token approval. |
 | Social bridge | Buffer ($5/channel/mo) temporary during OAuth review window. Swap to direct adapters per platform as reviews clear. |
-| Primary content AI | Claude Sonnet 4.6 (text); Opus 4.7 (quarterly strategy); Haiku 4.5 (classification + guardian). Gemini 3 Pro Image (image, primary); Ideogram 3.0 (text-in-image fallback); Imagen 4 (photoreal); FLUX.2 [pro] (open-model fallback). Kling 3.0 Standard (video, multi-shot); Veo 3.1 Fast (iteration). **Sora REMOVED — API dies 2026-09-24.** |
+| Primary content AI | Claude Sonnet 4.6 (text); Opus 4.7 (quarterly strategy); Haiku 4.5 (classification + guardian). Gemini 3 Pro Image (image, primary); Ideogram 3.0 (text-in-image fallback); Imagen 4 (photoreal, *planned, not yet implemented*); FLUX.2 [pro] (open-model fallback, *planned, not yet implemented*). Kling 3.0 Standard (video, multi-shot); Veo 3.1 Fast (iteration). **Sora REMOVED — API dies 2026-09-24.** |
 | Campaign model | Campaigns are top-level. Types: `product_launch / lead_gen / evergreen / event / reactive`. Default evergreen campaign auto-created per tenant. Pillars are a property on campaigns (`campaigns.pillar_id`), not a competing concept. |
 | Brand corpus | Git-backed markdown for APIRE/OSM bootstrap + user upload pipeline (PDF/DOCX/MD/images) for all tenants. |
 | Brand bootstrapping (no golden examples) | Hybrid: ingest existing docs for factual grounding + 60-draft AI voice-calibration flow → user picks 10–20 → those become the tenant's golden set. |
@@ -477,8 +477,8 @@ The product becomes irreplaceable when the integration ships.
 | **GSC URL Inspection 2K/day cap** | Cache aggressively, inspect on-demand only (post-publish or keyword edit), never sitewide sweep. |
 | **HubSpot $3K onboarding cliff** | Hard-cap tenant HubSpot recommendation at Starter. Build own pipeline CRM in LeadOrch to replace Pro features. |
 | **OAuth token storage = juicy target** | AES-256-GCM with master key in Workers Secrets, envelope encryption per tenant. Reuse LeadOrch's `lib/crypto.ts`. Never log tokens. |
-| **Image content-policy rejections** (Imagen rejects some security imagery) | FLUX.2 fallback router for security-domain prompts. |
-| **Generic AI-stock image style** (Kleo's failure on APIRE) | Brand-voice tab includes `image_style` field with example references; Ideogram prompt template includes per-tenant style block. |
+| **Image content-policy rejections** (Imagen rejects some security imagery) | FLUX.2 fallback router for security-domain prompts *(planned, not yet implemented)*. |
+| **Generic AI-stock image style** (Kleo's failure on APIRE) | Brand-voice tab includes `image_style` field with example references; image-prompt template includes per-tenant style block. |
 | **No cross-site config in Kleo** | Per-tenant by default + optional `parent_config` inheritance for the Kuzey case (29 sites can share a Kuzey-level base). |
 | **Dismiss-reasons thrown away** (Kleo) | First-class field on dismiss; preset reasons + free text; becomes V2 few-shot training. |
 | **No learning loop** (Kleo's biggest flaw) | Metrics in V1, learning prompt-injection in V2, full closed loop with LeadOrch in V3. |
