@@ -108,11 +108,16 @@ export async function loadGenContext(opts: {
     );
     const brandVoice = (cfgRows.rows[0]?.brand_voice ?? {}) as Record<string, unknown>;
 
+    // NOTE: the explicit `dc.tenant_id = ${tenantId}` predicate is load-bearing,
+    // not redundant with RLS. The app connects as Neon's `neondb_owner`, which
+    // has BYPASSRLS = true, so the tenant_isolation policy is NOT enforced for
+    // this connection — relying on it alone leaks every other tenant's chunks
+    // into the vector ranking. Keep the filter on every corpus query.
     const chunkRes = await tx.execute<ChunkRow>(sql`
       SELECT dc.chunk_text, d.source_filename, dc.embedding <=> ${vec} AS distance
       FROM marketing.document_chunks dc
       JOIN marketing.documents d ON dc.document_id = d.id
-      WHERE dc.superseded = false
+      WHERE dc.tenant_id = ${tenantId} AND dc.superseded = false
       ORDER BY dc.embedding <=> ${vec}
       LIMIT ${topK}
     `);
@@ -121,7 +126,9 @@ export async function loadGenContext(opts: {
       SELECT dc.chunk_text, d.source_filename, dc.embedding <=> ${vec} AS distance
       FROM marketing.document_chunks dc
       JOIN marketing.documents d ON dc.document_id = d.id
-      WHERE dc.superseded = false AND d.document_type = 'golden_example'
+      WHERE dc.tenant_id = ${tenantId}
+        AND dc.superseded = false
+        AND d.document_type = 'golden_example'
       ORDER BY dc.embedding <=> ${vec}
       LIMIT ${goldenK}
     `);

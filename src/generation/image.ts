@@ -163,11 +163,14 @@ export async function generateImage(opts: {
     const draft = dr.rows[0];
     if (!draft) throw new Error(`Draft ${draftId} not found for tenant ${tenantId}`);
 
+    // Explicit tenant filter required: the app's `neondb_owner` connection has
+    // BYPASSRLS = true, so RLS does not scope this vector search — without the
+    // predicate it would pull other tenants' visual guidelines into the prompt.
     const vr = await tx.execute<ChunkRow>(sql`
       SELECT dc.chunk_text, d.source_filename
       FROM marketing.document_chunks dc
       JOIN marketing.documents d ON dc.document_id = d.id
-      WHERE dc.superseded = false
+      WHERE dc.tenant_id = ${tenantId} AND dc.superseded = false
       ORDER BY dc.embedding <=> ${vlit}
       LIMIT 6
     `);

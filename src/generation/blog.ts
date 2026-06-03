@@ -64,13 +64,17 @@ export async function generateBlog(opts: {
     const cfgRows = await tx.select({ bv: siteConfig.brandVoice }).from(siteConfig).limit(1);
     const bv = (cfgRows[0]?.bv ?? {}) as Record<string, unknown>;
 
+    // The explicit tenant filter is load-bearing: the app connects as Neon's
+    // `neondb_owner` (BYPASSRLS = true), so the tenant_isolation RLS policy is
+    // NOT enforced and a query without this predicate ranks every tenant's
+    // chunks together — leaking other tenants' corpus into the result.
     const res = await tx.execute<ChunkRow>(sql`
       SELECT dc.chunk_text,
              d.source_filename,
              dc.embedding <=> ${topicLiteral} AS distance
       FROM marketing.document_chunks dc
       JOIN marketing.documents d ON dc.document_id = d.id
-      WHERE dc.superseded = false
+      WHERE dc.tenant_id = ${tenantId} AND dc.superseded = false
       ORDER BY dc.embedding <=> ${topicLiteral}
       LIMIT 8
     `);
