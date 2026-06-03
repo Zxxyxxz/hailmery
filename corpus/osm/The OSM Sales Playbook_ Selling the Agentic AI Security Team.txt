@@ -1,0 +1,34 @@
+The OSM Sales Playbook: Selling the Agentic AI Security Team
+Your Fast-Track Guide to Explaining Value and Closing Deals
+
+Module 1: The 'Why'. Your Opening Move.
+Start every conversation by listening for the three universal pains:
+	•	The People Headache: "We can't hire enough security experts." / "Our team is burned out."
+	•	The Money Headache: "These scanning tools are charging us per asset and it's killing us."
+	•	The Complexity Headache: "I have ten different dashboards and thousands of alerts."
+
+Module 2: The OSM Elevator Pitch (The 'What').
+"In simple terms, OSM provides an AISecOps Autonomous Workforce. It is an agentic AI security team powered by 5 Specialized AI Agents that work 24/7 to continuously find and fix your security risks before hackers can. Think about the cost of hiring a top-tier security team. OSM gives you that brainpower, supported by deep OSM AI Memory, for a fraction of the cost."
+
+Module 3: The Use Case Playbook (The 'How to Sell It').
+
+Use Case #1: The Overwhelmed & Understaffed Team
+	•	Pitch: "OSM is your AISecOps Autonomous Workforce. For small businesses, it's an entire security team in a box. For large enterprises, the 5 Specialized Agents are the ultimate force multiplier, handling the repetitive data analysis so humans focus on strategic threats."
+
+Use Case #2: The Budget-Constrained CFO & IT Director
+	•	Pitch: "OSM bundles its powerful Continuous Offensive Security capabilities with zero extra cost for unlimited scanning. You eliminate a huge line item and add an incredibly smart autonomous brain to analyze results."
+
+Use Case #3: The CISO with Too Many Dashboards
+	•	Pitch: "OSM acts as your single Executive Command Center for risk. It breaks down silos, pulling data from Network, Web, Containers, and Code into one unified screen. The AI Risk Manager connects the dots, providing true visibility."
+
+Module 4: The Sales Battlecard (Your Cheat Sheet)
+Customer Says -> You Say
+"We don't have the staff." -> "OSM provides an AISecOps Autonomous Workforce working 24/7."
+"Security tools are too expensive." -> "OSM eliminates legacy costs and adds a powerful Continuous Offensive Security brain."
+"We're drowning in alerts." -> "Our 5 Specialized AI Agents cut through noise to find the critical risks."
+"Too many dashboards." -> "OSM replaces them with a single Executive Command Center."
+"Too complex for a small team." -> "It acts as your entire team in a box."
+"We're a large enterprise with tools." -> "OSM's AI Memory ingests your tool data, making your human team immensely more efficient."
+
+Final Instruction:
+You are selling a tireless, brilliant AISecOps workforce. Frame every conversation around this value.

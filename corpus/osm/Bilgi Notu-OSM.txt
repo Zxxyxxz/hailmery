@@ -1,0 +1,16 @@
+Bilgi Notu
+Konu: OTONOM OFANSİF GÜVENLİK YÖNETİMİ PLATFORMU - OSM (OFFENSIVE SECURITY MANAGER) (https://www.ofsecman.io)
+
+Siber tehditlerin ulaştığı karmaşıklık ve hız seviyesi, geleneksel, reaktif savunma mekanizmalarını yetersiz kılmaktadır. OSM platformu, zafiyetleri pasif bir şekilde takip eden eski yaklaşımları bir kenara bırakarak, kurumu proaktif ve sürekli bir "Otonom Ofansif Güvenlik" (AISecOps) merkezine dönüştürür. 
+
+OSM, manuel iş yükünü ortadan kaldıran ve siber risk yönetimini yapay zeka destekli otonom bir iş gücüyle yeniden tanımlayan özellikleri şunlardır:
+
+	•	Otonom Siber Güvenlik İş Gücü (AISecOps): OSM, sadece bir yazılım değil, sanal bir güvenlik uzmanı ekibi (Threat Hunter, SOC Triage Agent, Risk Forecaster vb.) gibi çalışır. Zafiyetleri bulur, önceliklendirir ve insan müdahalesine gerek kalmadan %94'e varan oranda otomatik triyaj ve otonom iyileştirme süreçleri yürütür.
+	•	Yönetici Komuta Merkezi (Executive Command Center): Milyonlarca anlamsız güvenlik uyarısını (noise) filtreleyerek, "Bulgu Dönüşüm Hunisi" (Finding Conversion Funnel) aracılığıyla sadece kurumsal iş sürekliliğini tehdit eden kritik aksiyonları (Priority Actions) sunar. Teknik riskleri, yönetim kurulu seviyesinde iş etkisine dönüştürür.
+	•	OSM Yapay Zeka Hafızası (OSM AI Memory): Geleneksel, parçalı log (SIEM) yapısını ortadan kaldırır. Graph, vektör ve zaman serisi veritabanlarını harmanlayan bu bilişsel çekirdek (Cognitive Core), kurumun tüm siber ayak izini bağlamsal (contextual) zekaya dönüştürerek yapay zeka ajanlarının anında kararlar almasını sağlar.
+	•	Merkezi Sürekli Orkestrasyon: Parçalı güvenlik ürünlerini (Zafiyet Tarayıcılar, EDR, SIEM, SOAR) tek bir platformda birleştirir. Saldırı yüzeyi kapsamını (Attack Surface Coverage) sürekli olarak test eder ve silo yapısını yıkar.
+	•	Yönetmelik Uyum ve Veri Gizliliği: ISO 27001, PCI DSS ve PSD2 gibi standartlara tam uyum sağlarken, On-Premise/Air-Gapped kurulum özellikleri sayesinde kurum verisinin %100 gizliliğini garanti eder.
+
+OSM, siber güvenlikte izleyici olmaktan çıkıp, otonom ve ofansif bir yönetici konumuna geçmenizi sağlar.
+
+PoC için gereksinimler ayrı bir doküman olarak iletilecektir.

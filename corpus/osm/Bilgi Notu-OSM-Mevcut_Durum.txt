@@ -1,0 +1,20 @@
+Bilgi Notu
+Konu: MEVCUT OFANSİF GÜVENLİK YÖNETİMİ PLATFORMU İŞLEVLERİ VE YAPAY ZEKA AJANLARI - OSM (OFFENSIVE SECURITY MANAGER) 
+
+OSM platformu, kurumların siber güvenlik operasyonlarını merkezileştirerek izlenebilirliği artıran ve zafiyet yönetimini kolaylaştıran kapsamlı bir araç setidir. Platform, siber risk yönetimini en üst düzeye çıkarmak için otonom olarak çalışan 5 farklı özelleştirilmiş yapay zeka ajanı ile desteklenmektedir:
+
+	1. Yapay Zeka Risk Yöneticisi Ajanı (AI Risk Manager): Tüm altyapılardan ve alt ajanlardan gelen verileri merkezde toplar. Bulguları analiz ederek kurumun iş süreçlerine olan potansiyel etkisini hesaplar ve eyleme dönüştürülebilir öncelikli risk raporları (Priority Actions) sunar.
+	2. Ağ Güvenliği Ajanı (Network Security AI): Kurumun iç ve dış ağ mimarisini 7/24 tarar. Açık portlar ve topoloji hataları gibi ağ katmanı tehditlerini merkez ajanla paylaşır. Nessus, Qualys gibi araçların raporlarıyla çalışır.
+	3. Web Uygulaması Ajanı (Web App Security AI): OWASP tabanlı sürekli analizlerle SQL Injection, XSS ve API zafiyetlerini tespit ederek yazılım geliştirme ekipleri için aksiyon planları oluşturur.
+	4. Konteyner ve Bulut Ajanı (Container & Cloud Security AI): Docker, Kubernetes ve bulut hizmetlerindeki yapılandırma hatalarını ve imajlardaki gömülü siber güvenlik zafiyetlerini proaktif olarak analiz eder.
+	5. Yazılım Katmanı Ajanı (Software Layer Security AI): İşletim sistemleri ve kurulu 3. parti yazılımlardaki (CVE vb.) bilinen açıklıkları değerlendirip yama (patch) yönetimi süreçlerinde aciliyet önceliklendirmesi sağlar.
+
+Yapay zeka ajanlarının bu sürekli risk analiz bulguları, OSM’nin şu güçlü temel platform işlevleri üzerinden yürütülür:
+
+	•	Merkezi Varlık ve Risk Görünürlüğü: Farklı departmanlara ve altyapılara yayılmış tüm kurumsal BT varlıklarının (sunucular, uygulamalar, ağ cihazları) tek bir merkezden kayıt altına alınmasını sağlar. Mevcut envanter durumu ve onlara bağlı risk haritaları net bir şekilde sunulur.
+	•	Zafiyet Taramaları ve Birleştirme: Yapay zeka ajanlarının haricinde; Nessus, Qualys, Acunetix vb. gibi farklı güvenlik araçlarından ve bağımsız zafiyet tarayıcılardan gelen raporlar ayrıştırılır. Bu bulgular ortak bir dilde standartlaştırılarak güvenlik ekipleri için izlenebilir formata (CVE, CVSS) dönüştürür.
+	•	İş Akışı (Workflow) ve Görev Yönetimi: Tespit edilen güvenlik açıklarının ilgili ekiplere (Sistem, Ağ, Yazılım) atanması, durumlarının (Açık, İşlemde, Kapatıldı) takip edilmesi ve SLA (Hizmet Seviyesi Anlaşması) sürelerinin izlenmesi gibi kritik BT yönetişim süreçlerini yönetir. 
+	•	Konfigürasyon ve Sürekli Entegrasyon (CI/CD): Yazılım geliştirme döngüsü içinde statik analiz süreçleriyle entegrasyonlar kurar. Tarayıcı çıktılarının ve ajan bulgularının doğrudan görev izleme platformlarına (Jira vb.) aktarılmasına yardımcı olur.
+	•	Yönetmelik ve Standartlara Uyum Takibi: Varlıklar üzerinde tespit edilen zafiyetlerin ISO 27001, PCI DSS gibi standartlarda tanımlı regülasyonlar ışığında mevcut duruma etkisini raporlar; kurumların denetim öncesi eksiklerini görmelerini sağlar.
+
+Tüm bu temel platform özellikleri ile senkronize hareket eden 5 özelleşmiş yetenek sayesinde OSM, kurum içi güvenlik ekiplerinin iş yükünü süreçsel olarak yönetmenin ötesine geçer. Teknik zafiyetleri sürekli inceleyen, otomatik triyaj yapan ve çözüm süreçlerini anlık yöneten "Sanal bir Siber Güvenlik Uzman Ekibi" olarak aktif şekilde hizmet vermektedir.
