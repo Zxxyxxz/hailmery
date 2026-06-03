@@ -395,26 +395,68 @@ export function DraftCard({
             </>
           ) : draft.status === 'approved' ? (
             <div className="flex items-center gap-3">
-              <Button
-                // A draft scheduled comfortably in the future shows a purple
-                // "Schedule" button (the cron will publish it at publish_at);
-                // one that's due now/soon or already past shows a green
-                // "Publish now". Avoids an operator reading "Publish now" on a
-                // post that isn't actually going out yet.
-                variant={isScheduledFuture ? 'purple' : 'success'}
-                size="sm"
-                onClick={() => publishNow.mutate(draft.id)}
-                disabled={publishNow.isPending}
-              >
-                {publishNow.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : isScheduledFuture ? (
-                  <Clock className="h-4 w-4" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-                {isScheduledFuture ? 'Schedule' : 'Publish now'}
-              </Button>
+              {isScheduledFuture ? (
+                // Scheduled comfortably in the future: "Schedule" confirms the
+                // publish time and closes — it must NOT force-publish. The
+                // cron (runPublishTick) sends it when publish_at comes due.
+                <Popover
+                  align="start"
+                  className="w-72"
+                  trigger={
+                    <Button variant="purple" size="sm">
+                      <Clock className="h-4 w-4" />
+                      Schedule
+                    </Button>
+                  }
+                >
+                  {({ close }) => (
+                    <div className="space-y-3">
+                      <div className="text-xs font-medium text-gray-400">
+                        Scheduled to publish at
+                      </div>
+                      <Input
+                        type="datetime-local"
+                        value={scheduleAt}
+                        onChange={(e) => setScheduleAt(e.target.value)}
+                      />
+                      <div className="text-xs text-gray-500">
+                        We&apos;ll publish this automatically at the scheduled
+                        time — no need to send it manually.
+                      </div>
+                      <Button
+                        variant="purple"
+                        size="sm"
+                        className="w-full"
+                        disabled={patch.isPending}
+                        onClick={() => handleSaveSchedule(close)}
+                      >
+                        {patch.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Clock className="h-4 w-4" />
+                        )}
+                        Confirm schedule
+                      </Button>
+                    </div>
+                  )}
+                </Popover>
+              ) : (
+                // Due now/soon or already past: "Publish now" overrides the
+                // cron and sends immediately.
+                <Button
+                  variant="success"
+                  size="sm"
+                  onClick={() => publishNow.mutate(draft.id)}
+                  disabled={publishNow.isPending}
+                >
+                  {publishNow.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Publish now
+                </Button>
+              )}
               {publishNow.isError && (
                 <span className="text-xs text-red-400">
                   {toApiError(publishNow.error).error}
