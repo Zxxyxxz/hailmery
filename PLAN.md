@@ -84,7 +84,7 @@ The single most important decision: **match LeadOrch's stack exactly** so integr
 
 ### Content generation (Apr–May 2026 pricing)
 - **Text**: **Claude Sonnet 4.6** ($3/$15 per Mtok, 1M ctx, prompt caching 90% off cached input) is the workhorse. **Claude Opus 4.7** for the quarterly Marketing Strategy regeneration only. **Claude Haiku 4.5** ($1/$5) for cheap classification and the Brand Guardian LLM-as-judge.
-- **Images**: **Ideogram 3.0** ($0.06/image) primary — the only model with reliable in-image text rendering. **Imagen 4** ($0.04) for photoreal hero imagery. **FLUX.2 [pro]** via Replicate ($0.015) as the open-model fallback for security-domain content that Imagen sometimes rejects.
+- **Images**: **Gemini 3 Pro Image** primary — strongest prompt adherence and reliable in-image text rendering; requires a billing-enabled Google project (free tier is 0/429). **Ideogram 3.0** ($0.06/image) as the fallback for text-in-image when Gemini is unavailable or rate-limited. **Imagen 4** ($0.04) for photoreal hero imagery. **FLUX.2 [pro]** via Replicate ($0.015) as the open-model fallback for security-domain content that Imagen sometimes rejects.
 - **Video**: **Kling 3.0 Standard** ($0.084/sec, multi-shot up to 15s) primary. **Veo 3.1 Fast** ($0.15/sec) as iteration engine. **Sora REMOVED** — OpenAI is shutting down the Sora API on 2026-09-24; do not build on it.
 - **Budget envelope**: ~$16/mo H1 cadence (50 blog/100 image/20 video); ~$80–150/mo H2 across two tenants; per-tenant cap default $50/mo, configurable up via `marketing.tenants.monthly_budget_cents`.
 
@@ -249,7 +249,7 @@ The `content_drafts.status` transitions are explicit functions in `src/queue/tra
 | `hailmery/src/db/rls.sql` | RLS policy DDL applied per migration |
 | `hailmery/src/generation/blog.ts` | RAG + prompt-cached Sonnet 4.6; **H1 deliverable hinges on this file** |
 | `hailmery/src/generation/social.ts` | Per-platform copy variants |
-| `hailmery/src/generation/image.ts` | Router: Ideogram (text overlay) / Imagen (photoreal) / FLUX (security imagery) |
+| `hailmery/src/generation/image.ts` | Router: Gemini 3 Pro Image (primary, text overlay) / Ideogram (text-in-image fallback) / Imagen (photoreal) / FLUX (security imagery) |
 | `hailmery/src/generation/video.ts` | Router: Kling (multi-shot) / Veo (iteration). No Sora. |
 | `hailmery/src/generation/email.ts` | Composes campaign emails for SendGrid |
 | `hailmery/src/agents/strategist.ts` | Strategist (Claude Sonnet 4.6); reads unified analytics + corpus + campaign brief; outputs JSON brief |
