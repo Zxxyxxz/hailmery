@@ -151,8 +151,12 @@ api.get('/drafts', async (c) => {
   const campaignId = c.req.query('campaign_id');
   const month = c.req.query('month'); // YYYY-MM
 
-  if (status && !DRAFT_STATUSES.has(status))
-    return err(c, 422, 'bad_status', `Unknown status: ${status}`);
+  // status accepts one OR a comma-separated list (e.g. "approved,scheduled").
+  const statuses = status
+    ? status.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+  const badStatus = statuses.find((s) => !DRAFT_STATUSES.has(s));
+  if (badStatus) return err(c, 422, 'bad_status', `Unknown status: ${badStatus}`);
   if (campaignId) {
     try {
       assertUuid(campaignId, 'campaign_id');
@@ -164,7 +168,16 @@ api.get('/drafts', async (c) => {
   const db = makeDb(c.env.DATABASE_URL);
   const rows = await withTenantDb(db, tenantId, async (tx) => {
     const conds = [sql`cd.tenant_id = ${tenantId}`];
-    if (status) conds.push(sql`cd.status = ${status}::marketing.draft_status`);
+    if (statuses.length === 1) {
+      conds.push(sql`cd.status = ${statuses[0]}::marketing.draft_status`);
+    } else if (statuses.length > 1) {
+      conds.push(
+        sql`cd.status = ANY(ARRAY[${sql.join(
+          statuses.map((s) => sql`${s}`),
+          sql`, `,
+        )}]::marketing.draft_status[])`,
+      );
+    }
     if (campaignId) conds.push(sql`cd.campaign_id = ${campaignId}`);
     if (month && /^\d{4}-\d{2}$/.test(month)) {
       const start = `${month}-01`;

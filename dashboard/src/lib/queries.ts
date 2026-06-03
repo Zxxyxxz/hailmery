@@ -23,7 +23,8 @@ import type {
 // ── Drafts ──────────────────────────────────────────────────────────
 
 export function useDrafts(params: {
-  status?: DraftStatus
+  /** A single status, or a comma-separated list (e.g. "approved,scheduled"). */
+  status?: DraftStatus | string
   month?: string
   /** Poll interval (ms) while generation is in flight; false to disable. */
   refetchInterval?: number | false

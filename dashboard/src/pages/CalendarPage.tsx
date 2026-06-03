@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
-import { useDrafts } from '@/lib/queries'
+import {
+  ChevronLeft,
+  ChevronRight,
+  AlertTriangle,
+  Loader2,
+  Send,
+} from 'lucide-react'
+import { useDrafts, usePublishNow } from '@/lib/queries'
 import { channelMeta } from '@/lib/channels'
+import { toApiError } from '@/lib/api'
 import type { Draft } from '@/lib/types'
 import { DraftCard } from '@/components/DraftCard'
 import { Button } from '@/components/ui/button'
@@ -26,6 +33,7 @@ export default function CalendarPage() {
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth()) // 0-11
   const [selected, setSelected] = useState<Draft | null>(null)
+  const publishNow = usePublishNow()
 
   const monthParam = `${year}-${(month + 1).toString().padStart(2, '0')}`
   const { data: drafts, isLoading, isError } = useDrafts({ month: monthParam })
@@ -143,7 +151,10 @@ export default function CalendarPage() {
                       return (
                         <button
                           key={d.id}
-                          onClick={() => setSelected(d)}
+                          onClick={() => {
+                            publishNow.reset()
+                            setSelected(d)
+                          }}
                           title={`${meta.label} · ${d.status}`}
                           aria-label={`${meta.label} draft`}
                           className={cn(
@@ -169,7 +180,37 @@ export default function CalendarPage() {
         onClose={() => setSelected(null)}
         title="Content detail"
       >
-        {selected && <DraftCard draft={selected} readOnly />}
+        {selected && (
+          <div className="space-y-4">
+            <DraftCard draft={selected} readOnly />
+            {selected.status === 'approved' && (
+              <div className="border-t border-white/[0.06] pt-4">
+                <Button
+                  variant="purple"
+                  className="w-full"
+                  disabled={publishNow.isPending}
+                  onClick={() =>
+                    publishNow.mutate(selected.id, {
+                      onSuccess: () => setSelected(null),
+                    })
+                  }
+                >
+                  {publishNow.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Publish now
+                </Button>
+                {publishNow.isError && (
+                  <p className="mt-2 text-xs text-red-400">
+                    {toApiError(publishNow.error).error}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </Sheet>
     </div>
   )

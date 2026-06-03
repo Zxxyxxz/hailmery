@@ -15,9 +15,10 @@ import {
 } from '@/lib/queries'
 import { useTenant } from '@/lib/tenant-context'
 import { toApiError } from '@/lib/api'
-import type { Campaign, GenerateNowResult } from '@/lib/types'
+import type { Campaign, DraftStatus, GenerateNowResult } from '@/lib/types'
 import { DraftCard } from '@/components/DraftCard'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -41,6 +42,16 @@ const CHANNEL_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'tiktok', label: 'TikTok' },
 ]
 
+// Filter tabs below the stats bar. "Approved" groups approved + scheduled so a
+// draft that's been approved (and queued for a future publish) stays visible
+// with its Publish-now action.
+const QUEUE_TABS: Array<{ key: string; label: string; statuses: DraftStatus[] }> = [
+  { key: 'pending', label: 'Pending', statuses: ['pending_review'] },
+  { key: 'approved', label: 'Approved', statuses: ['approved', 'scheduled'] },
+  { key: 'published', label: 'Published', statuses: ['published'] },
+  { key: 'failed', label: 'Failed', statuses: ['failed'] },
+]
+
 export default function Queue() {
   const { current } = useTenant()
   const { data: campaigns } = useCampaigns()
@@ -51,10 +62,13 @@ export default function Queue() {
   const [createOpen, setCreateOpen] = useState(false)
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const [pollingUntil, setPollingUntil] = useState(0)
+  const [tab, setTab] = useState('pending')
   const isPolling = pollingUntil > Date.now()
 
+  const activeTab = QUEUE_TABS.find((t) => t.key === tab) ?? QUEUE_TABS[0]
+
   const { data: drafts, isLoading, isError, error } = useDrafts({
-    status: 'pending_review',
+    status: activeTab.statuses.join(','),
     refetchInterval: isPolling ? POLL_INTERVAL_MS : false,
   })
 
@@ -130,7 +144,7 @@ export default function Queue() {
         <div>
           <h1 className="text-2xl font-bold text-gray-100">Review queue</h1>
           <p className="mt-1 text-sm text-gray-500">
-            AI-generated drafts awaiting your approval
+            Review, approve, and publish AI-generated content
             {current ? ` · ${current.name}` : ''}
           </p>
         </div>
@@ -166,6 +180,17 @@ export default function Queue() {
         </div>
       )}
 
+      {/* Filter tabs */}
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          {QUEUE_TABS.map((t) => (
+            <TabsTrigger key={t.key} value={t.key}>
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       {isPolling && (
         <div className="glass-sm flex items-center gap-3 border-cyan-500/20 p-3 text-sm text-cyan-300">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -190,12 +215,18 @@ export default function Queue() {
       )}
 
       {!isLoading && !isError && sorted.length === 0 && (
-        <EmptyState
-          onGenerate={handleGenerate}
-          onCreate={() => setCreateOpen(true)}
-          canGenerate={!!evergreenId}
-          generating={generate.isPending}
-        />
+        tab === 'pending' ? (
+          <EmptyState
+            onGenerate={handleGenerate}
+            onCreate={() => setCreateOpen(true)}
+            canGenerate={!!evergreenId}
+            generating={generate.isPending}
+          />
+        ) : (
+          <div className="glass flex flex-col items-center justify-center px-6 py-16 text-center text-sm text-gray-500">
+            No {activeTab.label.toLowerCase()} drafts.
+          </div>
+        )
       )}
 
       {!isLoading && !isError && sorted.length > 0 && (

@@ -385,7 +385,7 @@ export function DraftCard({
           ) : draft.status === 'approved' ? (
             <div className="flex items-center gap-3">
               <Button
-                variant="success"
+                variant="purple"
                 size="sm"
                 onClick={() => publishNow.mutate(draft.id)}
                 disabled={publishNow.isPending}

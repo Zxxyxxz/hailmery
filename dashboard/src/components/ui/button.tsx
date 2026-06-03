@@ -18,6 +18,8 @@ const buttonVariants = cva(
           'bg-emerald-500/90 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-400',
         danger: 'bg-red-600/80 text-white hover:bg-red-500',
         info: 'bg-blue-600/80 text-white hover:bg-blue-500',
+        purple:
+          'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/20 hover:from-violet-400 hover:to-purple-500 hover:scale-[1.02] active:scale-[0.98]',
       },
       size: {
         default: 'h-10 px-4 py-2',
