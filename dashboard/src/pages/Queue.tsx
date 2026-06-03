@@ -52,6 +52,15 @@ const QUEUE_TABS: Array<{ key: string; label: string; statuses: DraftStatus[] }>
   { key: 'failed', label: 'Failed', statuses: ['failed'] },
 ]
 
+type SortKey = 'newest' | 'oldest' | 'guardian' | 'scheduled'
+
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: 'newest', label: 'Newest first' },
+  { key: 'oldest', label: 'Oldest first' },
+  { key: 'guardian', label: 'Guardian score' },
+  { key: 'scheduled', label: 'Scheduled date' },
+]
+
 export default function Queue() {
   const { current } = useTenant()
   const { data: campaigns } = useCampaigns()
@@ -63,6 +72,7 @@ export default function Queue() {
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const [pollingUntil, setPollingUntil] = useState(0)
   const [tab, setTab] = useState('pending')
+  const [sort, setSort] = useState<SortKey>('newest')
   const isPolling = pollingUntil > Date.now()
 
   const activeTab = QUEUE_TABS.find((t) => t.key === tab) ?? QUEUE_TABS[0]
@@ -111,12 +121,24 @@ export default function Queue() {
 
   const sorted = useMemo(() => {
     if (!drafts) return []
-    return [...drafts].sort((a, b) => {
-      const ta = a.publishAt ? new Date(a.publishAt).getTime() : Infinity
-      const tb = b.publishAt ? new Date(b.publishAt).getTime() : Infinity
-      return ta - tb
-    })
-  }, [drafts])
+    const arr = [...drafts]
+    const created = (iso: string | null) => (iso ? new Date(iso).getTime() : 0)
+    const scheduled = (iso: string | null) =>
+      iso ? new Date(iso).getTime() : Infinity
+    switch (sort) {
+      case 'oldest':
+        return arr.sort((a, b) => created(a.createdAt) - created(b.createdAt))
+      case 'guardian':
+        return arr.sort(
+          (a, b) => (b.guardianScore ?? -1) - (a.guardianScore ?? -1),
+        )
+      case 'scheduled':
+        return arr.sort((a, b) => scheduled(a.publishAt) - scheduled(b.publishAt))
+      case 'newest':
+      default:
+        return arr.sort((a, b) => created(b.createdAt) - created(a.createdAt))
+    }
+  }, [drafts, sort])
 
   // Scroll the freshly created draft into view once it lands in the list.
   const highlightRef = useRef<HTMLDivElement>(null)
@@ -180,16 +202,33 @@ export default function Queue() {
         </div>
       )}
 
-      {/* Filter tabs */}
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          {QUEUE_TABS.map((t) => (
-            <TabsTrigger key={t.key} value={t.key}>
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      {/* Filter tabs + sort */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            {QUEUE_TABS.map((t) => (
+              <TabsTrigger key={t.key} value={t.key}>
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Sort by</span>
+          <div className="w-44">
+            <Select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      </div>
 
       {isPolling && (
         <div className="glass-sm flex items-center gap-3 border-cyan-500/20 p-3 text-sm text-cyan-300">

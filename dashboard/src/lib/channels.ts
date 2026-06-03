@@ -44,6 +44,17 @@ export const CHANNELS: Record<string, ChannelMeta> = {
     charLimit: 280,
     kind: 'social',
   },
+  // `x` is the channel key the composer emits; alias it to the same meta as
+  // `twitter` so X drafts render "X" instead of the "Channel" fallback.
+  x: {
+    key: 'x',
+    label: 'X',
+    icon: Twitter,
+    iconClass: 'text-gray-200',
+    dotStyle: '#0b0b0d',
+    charLimit: 280,
+    kind: 'social',
+  },
   instagram: {
     key: 'instagram',
     label: 'Instagram',
@@ -107,6 +118,15 @@ export const CHANNELS: Record<string, ChannelMeta> = {
     dotStyle: '#f97316',
     charLimit: 0,
     kind: 'email',
+  },
+  gbp: {
+    key: 'gbp',
+    label: 'Google Business',
+    icon: Globe,
+    iconClass: 'text-blue-400',
+    dotStyle: '#4285f4',
+    charLimit: 1500,
+    kind: 'social',
   },
 }
 

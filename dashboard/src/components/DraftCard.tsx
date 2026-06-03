@@ -16,6 +16,7 @@ import { channelMeta } from '@/lib/channels'
 import {
   draftTitle,
   formatPublishAt,
+  formatTimeAgo,
   fromDatetimeLocal,
   toDatetimeLocal,
 } from '@/lib/format'
@@ -236,6 +237,10 @@ export function DraftCard({
             )}
           </Popover>
         )}
+        {/* Subtle "generated N ago" stamp, right-aligned on the clock row. */}
+        <span className="ml-auto text-xs text-gray-400 opacity-50">
+          Generated {formatTimeAgo(draft.createdAt)}
+        </span>
       </div>
 
       {/* Actions */}
