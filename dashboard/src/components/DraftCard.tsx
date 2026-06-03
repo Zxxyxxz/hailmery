@@ -118,6 +118,12 @@ export function DraftCard({
   const charCount = text.length
   const overLimit = meta.charLimit > 0 && charCount > meta.charLimit
 
+  // "Schedule" vs "Publish now": treat anything more than 5 minutes out as a
+  // future schedule; within 5 minutes or in the past it's an immediate publish.
+  const isScheduledFuture =
+    !!draft.publishAt &&
+    new Date(draft.publishAt).getTime() - Date.now() > 5 * 60 * 1000
+
   return (
     <div
       className={cn(
@@ -390,17 +396,24 @@ export function DraftCard({
           ) : draft.status === 'approved' ? (
             <div className="flex items-center gap-3">
               <Button
-                variant="purple"
+                // A draft scheduled comfortably in the future shows a purple
+                // "Schedule" button (the cron will publish it at publish_at);
+                // one that's due now/soon or already past shows a green
+                // "Publish now". Avoids an operator reading "Publish now" on a
+                // post that isn't actually going out yet.
+                variant={isScheduledFuture ? 'purple' : 'success'}
                 size="sm"
                 onClick={() => publishNow.mutate(draft.id)}
                 disabled={publishNow.isPending}
               >
                 {publishNow.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isScheduledFuture ? (
+                  <Clock className="h-4 w-4" />
                 ) : (
                   <Send className="h-4 w-4" />
                 )}
-                Publish now
+                {isScheduledFuture ? 'Schedule' : 'Publish now'}
               </Button>
               {publishNow.isError && (
                 <span className="text-xs text-red-400">
