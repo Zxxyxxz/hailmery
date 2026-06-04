@@ -357,7 +357,7 @@ async function maybeGenerateImage(
       tenantId,
       draftId,
       imageType,
-      r2: env.ASSETS,
+      r2: env.R2,
       publicBaseUrl: env.R2_PUBLIC_BASE_URL,
     });
     return res.skipped;

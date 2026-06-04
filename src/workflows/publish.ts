@@ -296,7 +296,7 @@ export async function publishDraft(env: PipelineEnv, draft: DueDraft): Promise<P
           tenantId: draft.tenantId,
           draftId: draft.id,
           imageType: 'social_square',
-          r2: env.ASSETS,
+          r2: env.R2,
           publicBaseUrl: env.R2_PUBLIC_BASE_URL,
         });
       } catch (err) {

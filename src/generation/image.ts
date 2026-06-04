@@ -238,36 +238,44 @@ export async function generateImage(opts: {
   // Worker runtime has neither R2 (in local dev) nor node:fs, so the local write
   // is best-effort — when it can't run we still return a viewable URL.
   let storedTo: 'r2' | 'local' | 'none';
-  let publicUrl: string;
   const base = opts.publicBaseUrl ?? process.env.R2_PUBLIC_BASE_URL;
   if (opts.r2) {
     await opts.r2.put(r2Key, bytes, { httpMetadata: { contentType: 'image/png' } });
     storedTo = 'r2';
-    publicUrl = base ? `${base.replace(/\/$/, '')}/${r2Key}` : (providerUrl ?? `https://placeholder.invalid/${r2Key}`);
   } else {
     // Try a local file write — works under the Node CLI; the Worker runtime has
     // no node:fs, so tolerate failure rather than failing the whole image.
-    let localPath: string | null = null;
     try {
       const { writeFile, mkdir } = await import('node:fs/promises');
       const path = await import('node:path');
-      localPath = path.join(process.cwd(), 'out', '_assets', tenantId, draftId, `${imageType}.png`);
+      const localPath = path.join(process.cwd(), 'out', '_assets', tenantId, draftId, `${imageType}.png`);
       await mkdir(path.dirname(localPath), { recursive: true });
       await writeFile(localPath, bytes);
       storedTo = 'local';
       console.warn(`[image] no R2 binding in this runtime — wrote bytes to ${localPath} (deferred to Worker for real R2 upload).`);
     } catch (e) {
       storedTo = 'none';
-      localPath = null;
-      console.warn(`[image] no R2 binding and no local filesystem (${(e as Error).message}) — relying on the provider-hosted URL.`);
+      console.warn(`[image] no R2 binding and no local filesystem (${(e as Error).message}) — embedding the image inline so the dashboard can still render it.`);
     }
-    // Prefer a real public base, then the provider's hosted URL (Ideogram
-    // returns a CDN URL that a browser CAN load — unlike file://), then a local
-    // file path, then a placeholder.
-    publicUrl = base
-      ? `${base.replace(/\/$/, '')}/${r2Key}`
-      : (providerUrl ?? (localPath ? `file://${localPath}` : `https://placeholder.invalid/${r2Key}`));
   }
+
+  // Choose the URL the dashboard renders as <img src>. It must be browser-
+  // loadable, so we never store a file:// path or a placeholder when we have
+  // real pixels. Preference order:
+  //   1. A real public CDN base over the canonical R2 key (set via
+  //      R2_PUBLIC_BASE_URL once the bucket is exposed on a public domain).
+  //   2. The provider's own hosted URL. Ideogram returns a CDN URL here;
+  //      Gemini does NOT — it streams inline bytes — so providerUrl is null
+  //      for the default Gemini provider.
+  //   3. An inline data: URI built from the bytes. Always renders with no R2,
+  //      no public domain, and no provider URL — this is what makes a freshly
+  //      generated Gemini image show up immediately, including when R2 is
+  //      unavailable or R2_PUBLIC_BASE_URL is not yet configured. It is heavier
+  //      to store in the draft row, so it is a last resort: wiring
+  //      R2_PUBLIC_BASE_URL (or a public bucket) replaces it with a short URL.
+  const publicUrl = base
+    ? `${base.replace(/\/$/, '')}/${r2Key}`
+    : (providerUrl ?? `data:image/png;base64,${bytesToBase64(bytes)}`);
 
   // Record the asset + attach the key to the draft.
   await withTenantDb(db, tenantId, async (tx) => {
@@ -605,6 +613,17 @@ function base64ToBytes(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+/** Encode bytes to base64 — the inverse of base64ToBytes. Used to build the
+ *  inline data: URI fallback so a generated image renders in the dashboard even
+ *  when there is no R2 public URL or provider-hosted URL. btoa is the
+ *  cross-runtime fallback when Buffer is absent. */
+function bytesToBase64(bytes: Uint8Array): string {
+  if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
 }
 
 // ── Ideogram API (legacy fallback) ───────────────────────────────────────────

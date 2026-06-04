@@ -1442,6 +1442,7 @@ api.post('/generate-now', async (c) => {
           tenantId,
           draftId,
           imageType: IMAGE_TYPE_FOR_CHANNEL(channel),
+          r2: c.env.R2,
           publicBaseUrl: c.env.R2_PUBLIC_BASE_URL,
         });
         imageSkipped = img.skipped;

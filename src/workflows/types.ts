@@ -26,7 +26,10 @@ export interface PipelineEnv {
   IMAGE_PROVIDER?: string;
   R2_PUBLIC_BASE_URL?: string;
   HUBSPOT_EVENT_TEMPLATE_ID?: string;
-  ASSETS?: R2Like;
+  // R2 bucket binding. MUST match the wrangler.toml binding name (`R2`) — the
+  // Cloudflare runtime injects bindings onto `env` by their configured name, so
+  // an out-of-sync name here reads back `undefined` and silently disables R2.
+  R2?: R2Like;
   GENERATION_WORKFLOW?: WorkflowBinding;
   PUBLISH_WORKFLOW?: WorkflowBinding;
 }
