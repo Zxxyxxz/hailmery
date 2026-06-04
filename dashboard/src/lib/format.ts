@@ -34,6 +34,22 @@ export function formatTimeAgo(iso: string | null): string {
   return `${years} year${years === 1 ? '' : 's'} ago`
 }
 
+/** Fuller "Tue, Jun 10, 9:00 AM" label — used in the schedule-confirmation
+ *  toast where the relative weekday-only label would be ambiguous for a date
+ *  several days or weeks out. */
+export function formatScheduleConfirm(iso: string | null): string {
+  if (!iso) return 'the scheduled time'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'the scheduled time'
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 /** Convert an ISO timestamp to the value a <input type="datetime-local"> wants. */
 export function toDatetimeLocal(iso: string | null): string {
   const d = iso ? new Date(iso) : new Date()

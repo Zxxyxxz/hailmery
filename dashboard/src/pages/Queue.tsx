@@ -272,7 +272,7 @@ export default function Queue() {
         <div className="space-y-4">
           {sorted.map((d) => (
             <div key={d.id} ref={d.id === highlightId ? highlightRef : undefined}>
-              <DraftCard draft={d} />
+              <DraftCard draft={d} onToast={setToast} />
             </div>
           ))}
         </div>
