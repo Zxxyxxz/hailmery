@@ -82,6 +82,16 @@ export async function generateEmail(opts: {
 }): Promise<EmailResult> {
   const { db, tenantId, topic, campaignId, audienceBrief, voiceModifier } = opts;
 
+  // ── V2 BUG (flagged 2026-06-09 — do not lose) ──────────────────────────────
+  // The email draft payloads built below ({ subject, html, body, previewText, … })
+  // do NOT match the shape SendGridAdapter.publish() consumes. SendGridMailPayload
+  // is { subject, html_body, from_email, from_name, to_list, utm_* }. Concretely:
+  // this writes `html` but the adapter reads `html_body`, and it never sets
+  // `from_email`, `from_name`, or `to_list`. So the email PUBLISH path cannot send
+  // these drafts as-is — publish() throws on `payload.to_list.map`. (The SendGrid
+  // webhook → content_metrics ingestion is unaffected; only outbound publish is.)
+  // V2: align the generated payload with SendGridMailPayload and source the
+  // recipient list + a verified sender so email sends end-to-end through the pipeline.
   const emailType = opts.emailType.toLowerCase() as EmailType;
   if (!EMAIL_TYPES.includes(emailType)) {
     throw new Error(`Unknown emailType '${opts.emailType}'. Expected one of: ${EMAIL_TYPES.join(', ')}`);
