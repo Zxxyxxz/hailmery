@@ -8,6 +8,7 @@
 // `resolveMailSyncDeps`, which loads + decrypts tenant_secrets.
 
 import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
+import { sql } from 'drizzle-orm';
 import { contentMetrics, syncLog } from '../db/schema.js';
 import { withTenantDb, loadPlatformToken } from '../lib/tenant.js';
 import { makeDb } from '../db/client.js';
@@ -49,6 +50,10 @@ export interface MailSyncDeps {
   db: Db;
   hubspot: HubSpotSync;
   sendgrid: SendGridSync;
+  // HubSpot custom timeline events require a public app + OAuth; with the
+  // current private-app token they're skipped (deferred to V2). Undefined =
+  // attempt (keeps existing unit tests, which inject mocks, unaffected).
+  timelineEnabled?: boolean;
 }
 
 export interface MailSyncEnv {
@@ -186,8 +191,17 @@ export async function processSendGridWebhookEvents(
   deps: MailSyncDeps,
 ): Promise<WebhookProcessResult> {
   const { db, hubspot } = deps;
-  const metricsRows: MetricRow[] = [];
+
+  // Aggregate metric contributions per draft. The unique index on
+  // (tenant_id, draft_id, window) forbids duplicate rows, and a multi-row
+  // upsert cannot touch the same conflict target twice — so a batch with
+  // several opens of one draft must collapse to a SINGLE row here.
+  const metricsByDraft = new Map<
+    string,
+    { impressions: number; clicks: number; engagement: number }
+  >();
   const complianceRows: SyncLogRow[] = [];
+  const hubspotErrors: string[] = [];
   let eventsProcessed = 0;
 
   for (const ev of events) {
@@ -203,65 +217,106 @@ export async function processSendGridWebhookEvents(
     const campaignId = typeof ev.campaign_id === 'string' ? ev.campaign_id : '';
     const timestampIso = new Date((ev.timestamp ?? 0) * 1000).toISOString();
 
-    // 2. Raw content_metrics row (window '1h', aggregated later). One row per
-    //    contributing event; bounce/unsubscribe/spam contribute no metric.
+    // 2. Metric contribution (window '1h'). Accumulated independently of
+    //    HubSpot so a HubSpot outage never costs us engagement data.
     const isClick = eventName === 'click';
     const isImpression = IMPRESSION_EVENTS.has(eventName);
     if (draftId && (isClick || isImpression)) {
-      const clicks = isClick ? 1 : 0;
-      const impressions = isImpression ? 1 : 0;
-      metricsRows.push({
-        tenantId,
-        draftId,
-        window: '1h',
-        impressions,
-        clicks,
-        engagement: impressions + clicks,
-        attributedLeads: 0,
-      });
+      const agg = metricsByDraft.get(draftId) ?? { impressions: 0, clicks: 0, engagement: 0 };
+      if (isImpression) agg.impressions += 1;
+      if (isClick) agg.clicks += 1;
+      agg.engagement = agg.impressions + agg.clicks;
+      metricsByDraft.set(draftId, agg);
     }
 
-    // 3. Ensure the contact exists in HubSpot.
-    let contactId = await hubspot.getContactByEmail(email);
-    if (!contactId) {
-      contactId = await hubspot.createContact({
-        email,
-        lifecyclestage: 'lead',
-      });
-    }
+    // 3. HubSpot timeline + suppression — isolated per event so one failure
+    //    (e.g. a bad event-template id) can't abort the batch or lose the
+    //    metrics written below. Failures surface to sync_log, never swallowed.
+    if (!email) continue;
+    try {
+      const contactId = await hubspot.getContactByEmail(email);
+      if (!contactId) {
+        await hubspot.createContact({ email, lifecyclestage: 'lead' });
+      }
 
-    // 4. Post the HubSpot timeline event.
-    await hubspot.createTimelineEvent(email, {
-      eventType: hubspotEvent,
-      timestamp: timestampIso,
-      details: {
-        sendgrid_event: eventName,
-        campaign_id: campaignId,
-        draft_id: draftId,
-      },
-    });
+      // Timeline enrichment is deferred to V2: HubSpot custom timeline events
+      // need a public app + OAuth, which the private-app token can't do. The
+      // contact ensure above and suppression below DO work with the private app.
+      if (deps.timelineEnabled !== false) {
+        await hubspot.createTimelineEvent(email, {
+          eventType: hubspotEvent,
+          timestamp: timestampIso,
+          details: {
+            sendgrid_event: eventName,
+            campaign_id: campaignId,
+            draft_id: draftId,
+          },
+        });
+      }
 
-    // 5. Suppress immediately on unsubscribe / spam report.
-    if (SUPPRESSION_EVENTS.has(eventName)) {
-      await hubspot.updateContact(email, {
-        unsubscribed: 'true',
-        hs_email_optout: 'true',
-      });
-      complianceRows.push({
-        tenantId,
-        direction: 'unsubscribe_propagated',
-        contactsSynced: 0,
-        eventsProcessed: 1,
-        errors: [],
-      });
+      // Suppress immediately on unsubscribe / spam report.
+      if (SUPPRESSION_EVENTS.has(eventName)) {
+        await hubspot.updateContact(email, {
+          unsubscribed: 'true',
+          hs_email_optout: 'true',
+        });
+        complianceRows.push({
+          tenantId,
+          direction: 'unsubscribe_propagated',
+          contactsSynced: 0,
+          eventsProcessed: 1,
+          errors: [],
+        });
+      }
+    } catch (err) {
+      hubspotErrors.push(`${eventName} ${email}: ${errMsg(err)}`);
     }
   }
 
+  // One row per draft, summing this batch's contributions.
+  const metricsRows: MetricRow[] = [...metricsByDraft.entries()].map(
+    ([draftId, m]) => ({
+      tenantId,
+      draftId,
+      window: '1h',
+      impressions: m.impressions,
+      clicks: m.clicks,
+      engagement: m.engagement,
+      attributedLeads: 0,
+    }),
+  );
+
   // Single short transaction for all DB writes (HTTP already done above).
-  if (metricsRows.length || complianceRows.length) {
+  if (metricsRows.length || complianceRows.length || hubspotErrors.length) {
     await withTenantDb(db, tenantId, async (tx) => {
-      if (metricsRows.length) await tx.insert(contentMetrics).values(metricsRows);
+      if (metricsRows.length) {
+        // Idempotent-additive: a second webhook delivery for the same draft in
+        // the same window adds to the existing counts instead of crashing on
+        // the unique index.
+        await tx
+          .insert(contentMetrics)
+          .values(metricsRows)
+          .onConflictDoUpdate({
+            target: [contentMetrics.tenantId, contentMetrics.draftId, contentMetrics.window],
+            set: {
+              impressions: sql`${contentMetrics.impressions} + excluded.impressions`,
+              clicks: sql`${contentMetrics.clicks} + excluded.clicks`,
+              engagement: sql`${contentMetrics.engagement} + excluded.engagement`,
+              fetchedAt: sql`now()`,
+            },
+          });
+      }
       if (complianceRows.length) await tx.insert(syncLog).values(complianceRows);
+      if (hubspotErrors.length) {
+        // Make HubSpot failures visible instead of silently logging to console.
+        await tx.insert(syncLog).values({
+          tenantId,
+          direction: 'sendgrid_webhook_error',
+          contactsSynced: 0,
+          eventsProcessed: hubspotErrors.length,
+          errors: hubspotErrors,
+        });
+      }
     });
   }
 
@@ -293,7 +348,10 @@ export async function resolveMailSyncDeps(
     extra: { eventTemplateId: env.HUBSPOT_EVENT_TEMPLATE_ID },
   });
   const sendgrid = new SendGridAdapter({ accessToken: sendgridToken });
-  return { db, hubspot, sendgrid };
+  // Timeline events deferred to V2 (see MailSyncDeps.timelineEnabled): the
+  // private-app token can sync contacts + propagate suppression, but HubSpot
+  // does not allow it to create custom timeline events.
+  return { db, hubspot, sendgrid, timelineEnabled: false };
 }
 
 // ──────────────────────────────────────────────────────────────────

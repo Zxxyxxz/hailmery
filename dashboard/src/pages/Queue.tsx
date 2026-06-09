@@ -89,6 +89,15 @@ export default function Queue() {
     return () => clearTimeout(t)
   }, [pollingUntil])
 
+  // Create-now returns the new draft id; once it actually lands in the visible
+  // list the "generating" banner has served its purpose — clear it so it does
+  // not linger for the full poll window after the draft already appeared.
+  useEffect(() => {
+    if (highlightId && drafts?.some((d) => d.id === highlightId)) {
+      setPollingUntil(0)
+    }
+  }, [highlightId, drafts])
+
   function startPolling() {
     setPollingUntil(Date.now() + POLL_WINDOW_MS)
   }
@@ -100,8 +109,6 @@ export default function Queue() {
   )
 
   function handleGenerate() {
-    // eslint-disable-next-line no-console
-    console.log('[queue] Generate more clicked — campaignId =', evergreenId)
     if (!evergreenId) {
       setToast({ message: 'No evergreen campaign found for this tenant.', variant: 'error' })
       return

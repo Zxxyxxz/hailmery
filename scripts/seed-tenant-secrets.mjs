@@ -13,6 +13,7 @@ import { Pool } from '@neondatabase/serverless';
 import { encryptSecret } from '../src/lib/secrets.ts';
 
 const SLUG = process.argv[2] ?? 'apire';
+const ONLY = process.argv[3] ?? null; // optional: limit the seed to a single platform
 
 // platform -> { envVar, scopes, expiresInterval }
 //   expiresInterval: a Postgres interval string, or null for non-expiring tokens.
@@ -38,6 +39,12 @@ const PLATFORMS = [
     envVar: 'BUFFER_ACCESS_TOKEN',
     scopes: null, // Buffer access tokens carry no granular scope strings
     expiresInterval: null, // Buffer access tokens do not expire
+  },
+  {
+    platform: 'wix-blog',
+    envVar: 'WIX_API_KEY', // Wix blog publishes with an account API key
+    scopes: null,
+    expiresInterval: null, // Wix API keys do not expire
   },
 ];
 
@@ -70,9 +77,12 @@ async function main() {
     return out;
   };
 
+  const selected = ONLY ? PLATFORMS.filter((p) => p.platform === ONLY) : PLATFORMS;
+  if (ONLY && selected.length === 0) throw new Error(`Unknown platform "${ONLY}"`);
+
   // Encrypt every token up front so a missing env var fails before we touch the DB.
   const rows = [];
-  for (const p of PLATFORMS) {
+  for (const p of selected) {
     const token = process.env[p.envVar];
     if (!token) throw new Error(`${p.envVar} not set (needed for platform "${p.platform}")`);
     const row = { ...p, ciphertext: await encryptSecret(token, key), profileMapCipher: null };
@@ -80,6 +90,19 @@ async function main() {
       const map = tenantProfileMap();
       row.profileMapCipher = await encryptSecret(JSON.stringify(map), key);
       console.log(`  buffer profile map for ${SLUG}: ${JSON.stringify(map)}`);
+    }
+    if (p.platform === 'wix-blog') {
+      // The Wix adapter needs the site id AND a post-owner member id at publish
+      // time; store both encrypted in the profile map alongside the API key
+      // (mirrors the buffer pattern). The Draft Posts API rejects a post with no
+      // owner, so the member id is required.
+      const siteId = process.env.WIX_SITE_ID;
+      if (!siteId) throw new Error('WIX_SITE_ID not set (needed for platform "wix-blog")');
+      const memberId = process.env.WIX_MEMBER_ID;
+      if (!memberId) throw new Error('WIX_MEMBER_ID not set (needed for platform "wix-blog" — the post owner/author)');
+      const profile = { wixSiteId: siteId, wixMemberId: memberId };
+      row.profileMapCipher = await encryptSecret(JSON.stringify(profile), key);
+      console.log(`  wix-blog profile for ${SLUG}: ${JSON.stringify(profile)}`);
     }
     rows.push(row);
   }

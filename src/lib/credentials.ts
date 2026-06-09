@@ -110,6 +110,15 @@ function buildCredentials(secret: LoadedSecret, extra?: Record<string, unknown>)
     refreshToken: secret.refreshToken ?? undefined,
     extra: {
       ...(secret.platform === 'buffer' ? { profileIds: secret.profileMap ?? {} } : {}),
+      // Wix blog needs the site id + post-owner member id at publish time; both
+      // are stored in the tenant's encrypted profile map (seeded from
+      // WIX_SITE_ID / WIX_MEMBER_ID) alongside the API key.
+      ...(secret.platform === 'wix-blog'
+        ? {
+            wixSiteId: secret.profileMap?.wixSiteId,
+            wixMemberId: secret.profileMap?.wixMemberId,
+          }
+        : {}),
       ...(extra ?? {}),
     },
   };

@@ -141,6 +141,8 @@ const ADAPTER_MAP: Record<string, () => Promise<AdapterClass>> = {
   pinterest: () => import('./buffer.js').then((m) => m.BufferAdapter),
   buffer: () => import('./buffer.js').then((m) => m.BufferAdapter),
   'wix-blog': () => import('./wix-blog.js').then((m) => m.WixBlogAdapter),
+  // Generation stores blog drafts with channel 'blog'; alias it to the Wix adapter.
+  blog: () => import('./wix-blog.js').then((m) => m.WixBlogAdapter),
   hubspot: () => import('./hubspot.js').then((m) => m.HubSpotAdapter),
   sendgrid: () => import('./sendgrid.js').then((m) => m.SendGridAdapter),
   email: () => import('./sendgrid.js').then((m) => m.SendGridAdapter),

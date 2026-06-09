@@ -7,7 +7,7 @@ import {
   Send,
 } from 'lucide-react'
 import { useDrafts, usePublishNow } from '@/lib/queries'
-import { channelMeta } from '@/lib/channels'
+import { channelMeta, SELECTABLE_CHANNELS } from '@/lib/channels'
 import { toApiError } from '@/lib/api'
 import type { Draft } from '@/lib/types'
 import { DraftCard } from '@/components/DraftCard'
@@ -217,23 +217,17 @@ export default function CalendarPage() {
 }
 
 function Legend() {
-  const entries = [
-    ['LinkedIn', '#3b82f6'],
-    ['X', '#0b0b0d'],
-    ['Instagram', 'linear-gradient(135deg,#a855f7,#ec4899)'],
-    ['Blog', '#10b981'],
-    ['Email', '#f97316'],
-    ['TikTok', '#ef4444'],
-  ] as const
+  // Sourced from channels.ts so legend colours can never drift from the dots
+  // actually rendered on the calendar (which also use channelMeta dotStyle).
   return (
     <div className="flex flex-wrap gap-4">
-      {entries.map(([label, color]) => (
-        <div key={label} className="flex items-center gap-1.5 text-xs text-gray-500">
+      {SELECTABLE_CHANNELS.map((c) => (
+        <div key={c.key} className="flex items-center gap-1.5 text-xs text-gray-500">
           <span
             className="h-2.5 w-2.5 rounded-full ring-1 ring-white/10"
-            style={{ background: color }}
+            style={{ background: c.dotStyle }}
           />
-          {label}
+          {c.label}
         </div>
       ))}
     </div>

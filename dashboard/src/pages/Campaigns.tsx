@@ -430,10 +430,12 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
       </div>
 
       <div className="mt-5 flex items-center gap-2 border-t border-white/[0.06] pt-4">
-        <Button variant="secondary" size="sm">
-          <Pencil className="h-4 w-4" />
-          Edit
-        </Button>
+        <span title="Coming in V2" className="inline-flex cursor-not-allowed">
+          <Button variant="secondary" size="sm" disabled>
+            <Pencil className="h-4 w-4" />
+            Edit
+          </Button>
+        </span>
         <Button
           variant="ghost"
           size="sm"

@@ -192,9 +192,13 @@ function PlatformsTab() {
             </div>
           </div>
           {c.connected ? (
-            <Button variant="ghost" size="sm">Disconnect</Button>
+            <span title="Coming in V2" className="inline-flex cursor-not-allowed">
+              <Button variant="ghost" size="sm" disabled>Disconnect</Button>
+            </span>
           ) : (
-            <Button variant="secondary" size="sm">Connect</Button>
+            <span title="Coming in V2" className="inline-flex cursor-not-allowed">
+              <Button variant="secondary" size="sm" disabled>Connect</Button>
+            </span>
           )}
         </div>
       ))}

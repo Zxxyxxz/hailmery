@@ -109,7 +109,7 @@ app.post('/settings/brand-voice', async (c) => {
 // ──────────────────────────────────────────────────────────────────
 // POST /webhooks/sendgrid — SendGrid Event Webhook ingest.
 //   - verifies the ECDSA signature against SENDGRID_WEBHOOK_SECRET
-//   - resolves tenant from the X-Tenant-ID header
+//   - resolves tenant from the ?tenant= query param (or X-Tenant-ID header)
 //   - processes events out-of-band via waitUntil and returns 200 fast
 //     (SendGrid retries for up to 24h on any non-200)
 // ──────────────────────────────────────────────────────────────────
@@ -129,12 +129,17 @@ app.post('/webhooks/sendgrid', async (c) => {
   );
   if (!valid) return c.text('invalid signature', 401);
 
-  const tenantId = c.req.header('X-Tenant-ID');
-  if (!tenantId) return c.text('missing X-Tenant-ID', 400);
+  // SendGrid's Event Webhook cannot send custom headers, so the tenant id is
+  // taken from the ?tenant= query param on the configured POST URL. The query
+  // string is NOT part of the signed payload (timestamp + body), so this does
+  // not affect the signature check above. The X-Tenant-ID header still works
+  // for manual/test calls.
+  const tenantId = c.req.header('X-Tenant-ID') ?? c.req.query('tenant');
+  if (!tenantId) return c.text('missing tenant (X-Tenant-ID header or ?tenant=)', 400);
   try {
-    assertUuid(tenantId, 'X-Tenant-ID');
+    assertUuid(tenantId, 'tenant');
   } catch {
-    return c.text('invalid X-Tenant-ID', 400);
+    return c.text('invalid tenant id', 400);
   }
 
   let events: SendGridEvent[];
