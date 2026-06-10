@@ -99,14 +99,23 @@ export class BufferAdapter implements ChannelAdapter {
       dueAt = Number.isNaN(d.getTime()) ? null : d.toISOString();
     }
 
+    // assets is a required [AssetInput!]! — a text-only post passes []. When the
+    // draft carries a real HTTPS image URL (the /api/assets proxy URL the image
+    // generator sets after a successful R2 write — never a base64 data: URI),
+    // attach it as an image asset so the post publishes with its visual. Buffer's
+    // ImageAssetInput.url is a required String and must be publicly fetchable.
+    const draftAssets = (draft.assets ?? {}) as Record<string, unknown>;
+    const imageUrl =
+      typeof draftAssets.imageUrl === 'string' && draftAssets.imageUrl.startsWith('https://')
+        ? draftAssets.imageUrl
+        : undefined;
+
     const input: Record<string, unknown> = {
       channelId,
       text,
       schedulingType: 'automatic',
       mode: dueAt ? 'customScheduled' : 'shareNow',
-      // assets is a required [AssetInput!]! — a text-only post passes []. The
-      // image branch (push { image: { url } }) lands once asset URLs are wired.
-      assets: [],
+      assets: imageUrl ? [{ image: { url: imageUrl } }] : [],
     };
     if (dueAt) input.dueAt = dueAt;
 

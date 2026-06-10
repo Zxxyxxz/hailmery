@@ -179,6 +179,30 @@ api.get('/tenants', async (c) => {
   );
 });
 
+// ── GET /api/assets/:key ────────────────────────────────────────────
+// Public, unauthenticated asset proxy. Streams a generated image straight from
+// R2 by its full (tenant-namespaced) object key. The `{.+}` regex param keeps
+// the slashes in the key (assets/<tenant>/<draft>/<type>.png). This is what lets
+// a Buffer/social post attach a real, fetchable HTTPS image URL — Buffer cannot
+// attach a base64 data: URI. No auth by design: the key is unguessable +
+// tenant-namespaced and the bytes are non-sensitive marketing imagery.
+api.get('/assets/:key{.+}', async (c) => {
+  const key = c.req.param('key');
+  if (!key) return err(c, 404, 'not_found', 'asset not found');
+  if (!c.env.R2) return err(c, 404, 'not_found', 'asset storage unavailable');
+
+  const obj = await c.env.R2.get(key);
+  if (!obj) return err(c, 404, 'not_found', 'asset not found');
+
+  const contentType = obj.httpMetadata?.contentType ?? 'image/png';
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  });
+});
+
 // ── GET /api/drafts ─────────────────────────────────────────────────
 
 api.get('/drafts', async (c) => {

@@ -267,15 +267,19 @@ export async function generateImage(opts: {
   //   2. The provider's own hosted URL. Ideogram returns a CDN URL here;
   //      Gemini does NOT — it streams inline bytes — so providerUrl is null
   //      for the default Gemini provider.
-  //   3. An inline data: URI built from the bytes. Always renders with no R2,
-  //      no public domain, and no provider URL — this is what makes a freshly
-  //      generated Gemini image show up immediately, including when R2 is
-  //      unavailable or R2_PUBLIC_BASE_URL is not yet configured. It is heavier
-  //      to store in the draft row, so it is a last resort: wiring
-  //      R2_PUBLIC_BASE_URL (or a public bucket) replaces it with a short URL.
+  //   3. The Worker's public /api/assets proxy over the canonical R2 key — used
+  //      whenever the bytes actually landed in R2 (storedTo === 'r2') and no CDN
+  //      base is set. This is a real, fetchable HTTPS URL, so Buffer/social can
+  //      attach the image (a base64 data: URI cannot be attached to a post).
+  //   4. An inline data: URI built from the bytes — the last-resort fallback for
+  //      the local/none paths (the CLI demo, or a runtime with neither R2 nor
+  //      node:fs). Heavier to store in the draft row, but always renders.
+  const PROXY_BASE = 'https://hailmery-api.bezekyigit0.workers.dev/api/assets';
   const publicUrl = base
     ? `${base.replace(/\/$/, '')}/${r2Key}`
-    : (providerUrl ?? `data:image/png;base64,${bytesToBase64(bytes)}`);
+    : storedTo === 'r2'
+      ? `${PROXY_BASE}/${r2Key}`
+      : (providerUrl ?? `data:image/png;base64,${bytesToBase64(bytes)}`);
 
   // Record the asset + attach the key to the draft.
   await withTenantDb(db, tenantId, async (tx) => {

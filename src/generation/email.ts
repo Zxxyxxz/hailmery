@@ -10,9 +10,11 @@
 // outreach is a 1:1 cold email — it is generated and guardian-checked but NOT
 // queued (it is not reviewable marketing content), so its draftId is null.
 
+import { sql } from 'drizzle-orm';
 import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
 import { anthropic, MODELS } from '../lib/ai.js';
 import { brandGuardian } from '../agents/guardian.js';
+import { withTenantDb, hasPlatformSecret } from '../lib/tenant.js';
 import {
   loadGenContext,
   brandVoicePreamble,
@@ -71,6 +73,67 @@ export interface EmailResult {
   outreach?: OutreachContent;
 }
 
+interface EmailDelivery {
+  fromEmail: string;
+  fromName: string;
+  listSource: 'hubspot_all' | 'sendgrid_all' | null;
+}
+
+// Resolve the sender + recipient-list source for an email draft so the SendGrid
+// adapter can actually send it.
+//   from_email : site_config.general.fromEmail/email when configured, else a
+//                marketing@<site-domain> default.
+//   list_source: where the recipients come from at send time — HubSpot when
+//                connected (the system of record for contacts), else a SendGrid
+//                list, else null (publish refuses with a clear error).
+async function resolveEmailDelivery(
+  db: NeonDatabase<Record<string, unknown>>,
+  tenantId: string,
+  siteId: string,
+  tenantName: string,
+): Promise<EmailDelivery> {
+  const site = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<{ domain: string; general: Record<string, unknown> | null }>(sql`
+      SELECT s.domain, sc.general
+      FROM marketing.sites s
+      LEFT JOIN marketing.site_config sc
+        ON sc.site_id = s.id AND sc.tenant_id = ${tenantId}
+      WHERE s.id = ${siteId} AND s.tenant_id = ${tenantId}
+      LIMIT 1
+    `);
+    return r.rows[0] ?? null;
+  });
+
+  const general = (site?.general ?? {}) as Record<string, unknown>;
+  const configuredFrom =
+    typeof general.fromEmail === 'string' && general.fromEmail
+      ? general.fromEmail
+      : typeof general.email === 'string' && general.email
+        ? general.email
+        : null;
+  const configuredName =
+    typeof general.fromName === 'string' && general.fromName ? general.fromName : null;
+
+  // TODO(V2): make the sender configurable per tenant in site_config (a verified
+  // sender). The marketing@<domain> default only delivers if that domain is
+  // authenticated in SendGrid — otherwise the send is rejected at the API.
+  const domain = (site?.domain as string) ?? 'example.com';
+  const fromEmail = configuredFrom ?? `marketing@${domain}`;
+  const fromName = configuredName ?? tenantName;
+
+  const [hasHubSpot, hasSendGrid] = await Promise.all([
+    hasPlatformSecret(db, tenantId, 'hubspot'),
+    hasPlatformSecret(db, tenantId, 'sendgrid'),
+  ]);
+  const listSource: EmailDelivery['listSource'] = hasHubSpot
+    ? 'hubspot_all'
+    : hasSendGrid
+      ? 'sendgrid_all'
+      : null;
+
+  return { fromEmail, fromName, listSource };
+}
+
 export async function generateEmail(opts: {
   db: NeonDatabase<Record<string, unknown>>;
   tenantId: string;
@@ -82,16 +145,14 @@ export async function generateEmail(opts: {
 }): Promise<EmailResult> {
   const { db, tenantId, topic, campaignId, audienceBrief, voiceModifier } = opts;
 
-  // ── V2 BUG (flagged 2026-06-09 — do not lose) ──────────────────────────────
-  // The email draft payloads built below ({ subject, html, body, previewText, … })
-  // do NOT match the shape SendGridAdapter.publish() consumes. SendGridMailPayload
-  // is { subject, html_body, from_email, from_name, to_list, utm_* }. Concretely:
-  // this writes `html` but the adapter reads `html_body`, and it never sets
-  // `from_email`, `from_name`, or `to_list`. So the email PUBLISH path cannot send
-  // these drafts as-is — publish() throws on `payload.to_list.map`. (The SendGrid
-  // webhook → content_metrics ingestion is unaffected; only outbound publish is.)
-  // V2: align the generated payload with SendGridMailPayload and source the
-  // recipient list + a verified sender so email sends end-to-end through the pipeline.
+  // The newsletter/drip draft payloads below now carry the fields
+  // SendGridAdapter.publish() consumes (html_body, from_email, from_name) plus a
+  // list_source marker (resolveEmailDelivery, below). What is NOT yet wired: the
+  // actual recipient-list resolution — list_source records WHERE to pull contacts
+  // from (HubSpot all-contacts / a SendGrid list), but turning that into a
+  // concrete to_list happens at send time and is still a V2 item. Until then a
+  // publish with no explicit to_list fails with a clear "recipient list not yet
+  // configured" error rather than crashing on an undefined to_list.
   const emailType = opts.emailType.toLowerCase() as EmailType;
   if (!EMAIL_TYPES.includes(emailType)) {
     throw new Error(`Unknown emailType '${opts.emailType}'. Expected one of: ${EMAIL_TYPES.join(', ')}`);
@@ -111,6 +172,7 @@ export async function generateEmail(opts: {
   };
 
   if (emailType === 'newsletter') {
+    const delivery = await resolveEmailDelivery(db, tenantId, ctx.siteId, ctx.tenantName);
     const instructions = [
       'You write a single newsletter email. Produce four parts, framed EXACTLY with these markers and nothing else:',
       '',
@@ -159,6 +221,11 @@ export async function generateEmail(opts: {
       previewText: newsletter.previewText,
       body: newsletter.plainText,
       html: newsletter.htmlBody,
+      // Fields SendGridAdapter.publish() (SendGridMailPayload) reads at send time.
+      html_body: newsletter.htmlBody,
+      from_email: delivery.fromEmail,
+      from_name: delivery.fromName,
+      list_source: delivery.listSource ?? undefined,
       guardianScore: guardian.score,
       guardianNotes: guardian.notes,
       flagged: guardian.flagged,
@@ -189,6 +256,7 @@ export async function generateEmail(opts: {
   }
 
   if (emailType === 'drip') {
+    const delivery = await resolveEmailDelivery(db, tenantId, ctx.siteId, ctx.tenantName);
     // One Claude call per email. Generating all 5 in a single call is fragile:
     // each HTML email runs ~2-3k output tokens, so 5 + plain copies overflow any
     // reasonable max_tokens and the tail emails truncate. Per-email calls also
@@ -271,6 +339,11 @@ export async function generateEmail(opts: {
       topic,
       subject: sequence[0].subject,
       sequence,
+      // Sender + list marker for the publish path (the per-email html_body for a
+      // drip is in `sequence`; single-send of a drip is a V2 concern).
+      from_email: delivery.fromEmail,
+      from_name: delivery.fromName,
+      list_source: delivery.listSource ?? undefined,
       guardianScore: guardian.score,
       guardianNotes: guardian.notes,
       flagged: guardian.flagged,

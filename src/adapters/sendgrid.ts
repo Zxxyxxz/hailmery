@@ -19,7 +19,11 @@ export interface SendGridMailPayload {
   html_body: string;
   from_email: string;
   from_name: string;
-  to_list: Array<{ email: string; name?: string }>;
+  // Optional explicit recipient list (a test send, or a pre-resolved audience).
+  // When absent, list_source marks where the adapter should pull recipients from
+  // at send time.
+  to_list?: Array<{ email: string; name?: string }>;
+  list_source?: 'hubspot_all' | 'sendgrid_all';
   utm_campaign?: string;
   utm_content?: string;
 }
@@ -65,13 +69,30 @@ export class SendGridAdapter implements ChannelAdapter {
   async publish(draft: ContentDraft): Promise<PublishResult> {
     const payload = draft.payload as unknown as SendGridMailPayload;
 
+    if (!payload.html_body) {
+      throw new Error('Email draft has no html_body to send');
+    }
+
+    // Resolve recipients. An explicit to_list wins (a test send, or a
+    // pre-resolved audience). Otherwise list_source marks WHERE the recipients
+    // should come from — but resolving a full contact list from the connected
+    // source (HubSpot all-contacts / a SendGrid list) is not wired yet.
+    // TODO(V2): when to_list is empty, resolve payload.list_source into a concrete
+    // recipient list here instead of refusing the send.
+    const recipients = Array.isArray(payload.to_list) ? payload.to_list : [];
+    if (recipients.length === 0) {
+      throw new Error(
+        'Email recipient list not yet configured — connect HubSpot or set a SendGrid list',
+      );
+    }
+
     const htmlWithUtm = injectUtmParams(
       payload.html_body,
       payload.utm_campaign ?? draft.campaignId ?? '',
       payload.utm_content ?? draft.id,
     );
 
-    const personalizations = payload.to_list.map((to) => ({
+    const personalizations = recipients.map((to) => ({
       to: [{ email: to.email, name: to.name }],
     }));
 
