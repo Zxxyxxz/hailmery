@@ -20,8 +20,16 @@ function makeMockDb() {
   const tx = {
     execute: vi.fn(async () => ({ rows: [] })),
     insert: (table: unknown) => ({
-      values: async (rows: unknown) => {
+      // Drizzle's insert builder is BOTH awaitable (syncLog: `await
+      // tx.insert(...).values(...)`) AND chainable with .onConflictDoUpdate()
+      // (content_metrics). Record on values() and model both continuations.
+      values: (rows: unknown) => {
         inserts.push({ table, rows });
+        const builder = Promise.resolve() as Promise<void> & {
+          onConflictDoUpdate: () => Promise<void>;
+        };
+        builder.onConflictDoUpdate = () => Promise.resolve();
+        return builder;
       },
     }),
   };
@@ -147,7 +155,7 @@ describe('processSendGridWebhookEvents', () => {
     } as unknown as MailSyncDeps;
   }
 
-  it('writes correct content_metrics rows for each event type', async () => {
+  it('aggregates a draft\'s events into one content_metrics row per window', async () => {
     const { db, inserts } = makeMockDb();
     const deps = foundContactDeps(db);
 
@@ -163,13 +171,21 @@ describe('processSendGridWebhookEvents', () => {
     );
 
     const metrics = insertsFor(inserts, contentMetrics) as Array<Record<string, unknown>>;
-    // delivered + open + click contribute a row; bounce does not
-    expect(metrics).toHaveLength(3);
-    expect(metrics).toEqual([
-      expect.objectContaining({ draftId: DRAFT, window: '1h', impressions: 1, clicks: 0 }),
-      expect.objectContaining({ draftId: DRAFT, window: '1h', impressions: 1, clicks: 0 }),
-      expect.objectContaining({ draftId: DRAFT, window: '1h', impressions: 0, clicks: 1 }),
-    ]);
+    // All of one draft's events in a batch collapse into a SINGLE row — the
+    // unique (tenant, draft, window) index forbids duplicates, and the upsert
+    // cannot touch the same conflict target twice. delivered + open => 2
+    // impressions; click => 1 click; engagement = impressions + clicks = 3;
+    // bounce contributes nothing.
+    expect(metrics).toHaveLength(1);
+    expect(metrics[0]).toEqual(
+      expect.objectContaining({
+        draftId: DRAFT,
+        window: '1h',
+        impressions: 2,
+        clicks: 1,
+        engagement: 3,
+      }),
+    );
   });
 
   it('propagates unsubscribe to HubSpot and writes a compliance sync_log row', async () => {

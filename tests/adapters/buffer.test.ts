@@ -105,17 +105,68 @@ describe('BufferAdapter', () => {
   });
 
   describe('fetchMetrics', () => {
-    it('is a no-op — Buffer has no analytics endpoint, so returns empty metrics without an API call', async () => {
-      const metrics = await adapter.fetchMetrics('upd_abc');
+    const EMPTY = { impressions: 0, clicks: 0, engagement: 0, attributedLeads: 0 };
 
-      expect(metrics).toEqual({
-        impressions: 0,
-        clicks: 0,
-        engagement: 0,
-        attributedLeads: 0,
-      });
-      // No HTTP request is made — the nightly metrics job no longer 401s.
+    it('short-circuits a draft UUID (no Buffer ref recorded) without an API call', async () => {
+      const metrics = await adapter.fetchMetrics('6daebc34-7fd0-4542-8527-cfcd125a5f72');
+      expect(metrics).toEqual(EMPTY);
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('short-circuits a URL-shaped ref (a permalink, not a PostId) without an API call', async () => {
+      const metrics = await adapter.fetchMetrics('https://www.linkedin.com/feed/update/abc');
+      expect(metrics).toEqual(EMPTY);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('queries Buffer and maps post metrics to a MetricsResult (LinkedIn shape)', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          data: {
+            post: {
+              id: '6a21c43359f44e6a442977e5',
+              status: 'sent',
+              metrics: [
+                { type: 'impressions', value: 67 },
+                { type: 'reactions', value: 3 },
+                { type: 'comments', value: 0 },
+                { type: 'shares', value: 1 },
+                { type: 'engagementRate', value: 5.97 },
+              ],
+            },
+          },
+        }),
+      );
+
+      const metrics = await adapter.fetchMetrics('6a21c43359f44e6a442977e5');
+
+      expect(mockFetch).toHaveBeenCalledOnce();
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.buffer.com/graphql');
+      const body = JSON.parse(init.body as string);
+      expect(body.query).toContain('post(input: { id: $id })');
+      expect(body.variables.id).toBe('6a21c43359f44e6a442977e5');
+      // impressions=67; clicks=0 (LinkedIn exposes none via Buffer);
+      // engagement = reactions(3) + comments(0) + shares(1) = 4; the
+      // engagementRate percentage is excluded from the interaction count.
+      expect(metrics).toEqual({ impressions: 67, clicks: 0, engagement: 4, attributedLeads: 0 });
+    });
+
+    it('returns empty (never throws) when the post is not found / stale ref', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({
+          data: { post: null },
+          errors: [{ message: 'Post not found', extensions: { code: 'NOT_FOUND' } }],
+        }),
+      );
+      const metrics = await adapter.fetchMetrics('6a216b029c081f8221477638');
+      expect(metrics).toEqual(EMPTY);
+    });
+
+    it('returns empty (never throws) on a network/transport error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('boom'));
+      const metrics = await adapter.fetchMetrics('6a21c43359f44e6a442977e5');
+      expect(metrics).toEqual(EMPTY);
     });
   });
 

@@ -147,14 +147,24 @@ export async function processMetricsQueue(env: MetricsEnv, db: Db, tenantId: str
         // time); fall back to the internal draft id when no ref was recorded.
         const externalId = row.published_ref || row.draft_id;
         const metrics = await resolved.resolved.adapter.fetchMetrics(externalId);
-        await upsertContentMetric(db, tenantId, {
-          draftId: row.draft_id,
-          window: row.window,
-          impressions: metrics.impressions,
-          clicks: metrics.clicks,
-          engagement: metrics.engagement,
-          attributedLeads: metrics.attributedLeads,
-        });
+        // Only persist a row when the fetch returned something real. An empty
+        // result (no adapter data, or a stale/deleted platform post → all
+        // zeros) would otherwise write a zero-stub row that pollutes the
+        // dashboard — /api/analytics aggregates MAX across windows, so a stray
+        // zero adds a fake "measured" post with no engagement. Skipping the
+        // upsert keeps honest zeros (no row) instead of misleading zeros.
+        const hasData =
+          metrics.impressions || metrics.clicks || metrics.engagement || metrics.attributedLeads;
+        if (hasData) {
+          await upsertContentMetric(db, tenantId, {
+            draftId: row.draft_id,
+            window: row.window,
+            impressions: metrics.impressions,
+            clicks: metrics.clicks,
+            engagement: metrics.engagement,
+            attributedLeads: metrics.attributedLeads,
+          });
+        }
       }
       // No adapter / no credentials → nothing to fetch; still mark fetched so
       // the queue drains rather than re-attempting forever.

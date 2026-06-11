@@ -1,3 +1,14 @@
+// ⛔️⛔️⛔️ DO NOT RUN THIS SCRIPT — EVER — AGAINST PRODUCTION ⛔️⛔️⛔️
+//
+// This seeds FABRICATED engagement numbers into marketing.content_metrics and
+// then runs the scoring/golden-tagging pipeline on them, which promotes fake
+// "golden examples" into the RAG corpus and poisons generation. Session 4
+// (scripts/cleanup-sim-metrics.mjs) deleted everything this script created.
+// Running it again re-introduces fake analytics that Baran will (rightly) read
+// as a breach of trust. It is retained ONLY as a reference for the metrics
+// pipeline shape. If you need demo data, point DATABASE_URL at a throwaway DB.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // Simulated nightly metrics pass (Chunk 7 demo / Part 5).
 //
 //   pnpm tsx --env-file=.env scripts/sim-metrics.ts
@@ -21,6 +32,18 @@ const env: MetricsEnv = {
 const rnd = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 async function main() {
+  // Hard guard — this script fabricates analytics. It must never run by
+  // accident. Override only with a deliberate, explicit env flag.
+  if (process.env.ALLOW_SIM_METRICS !== 'YES_I_KNOW') {
+    console.error(
+      'Refusing to run sim-metrics.ts — it seeds FABRICATED analytics into the\n' +
+        'configured database and poisons the golden-example corpus. See the warning\n' +
+        'at the top of this file. To override (throwaway DB only), set:\n' +
+        '  ALLOW_SIM_METRICS=YES_I_KNOW',
+    );
+    process.exit(1);
+  }
+
   const db = makeDb(env.DATABASE_URL);
   const apire = await findTenantBySlug(db, 'apire');
   if (!apire) throw new Error('APIRE tenant not found');

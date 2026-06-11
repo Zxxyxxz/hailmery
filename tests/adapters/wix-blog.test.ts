@@ -7,7 +7,7 @@ vi.stubGlobal('fetch', mockFetch);
 
 const creds: WixBlogCredentials = {
   accessToken: 'wix_test_key',
-  extra: { wixSiteId: 'site-id-abc' },
+  extra: { wixSiteId: 'site-id-abc', wixMemberId: 'member-xyz' },
 };
 
 function makeDraft(overrides: Partial<ContentDraft> = {}): ContentDraft {
@@ -22,8 +22,7 @@ function makeDraft(overrides: Partial<ContentDraft> = {}): ContentDraft {
     payload: {
       title: 'NIS2 Compliance Guide',
       excerpt: 'A primer on EU NIS2 requirements',
-      content: '<p>Rich text content</p>',
-      wixPostId: null,
+      body: 'Rich text content\n\nSecond paragraph',
     },
     assets: {},
     scoreHuman: null,
@@ -51,64 +50,115 @@ describe('WixBlogAdapter', () => {
   let adapter: WixBlogAdapter;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // mockReset (not clearAllMocks) so any unconsumed mockResolvedValueOnce from
+    // a prior test cannot leak into the next.
+    mockFetch.mockReset();
     adapter = new WixBlogAdapter(creds);
   });
 
   describe('publish', () => {
-    it('creates a draft then publishes when no wixPostId', async () => {
-      mockFetch
-        .mockResolvedValueOnce(
-          jsonResponse({ post: { id: 'post-abc', url: 'https://apire.io/blog/nis2' } }),
-        )
-        .mockResolvedValueOnce(
-          jsonResponse({ post: { id: 'post-abc', status: 'PUBLISHED' } }),
-        );
+    it('creates + publishes a text-only draft (no image) in a single call', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ draftPost: { id: 'post-abc', url: 'https://apire.io/blog/nis2' } }),
+      );
 
       const result = await adapter.publish(makeDraft());
 
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch).toHaveBeenCalledOnce();
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://www.wixapis.com/blog/v3/draft-posts');
+      // Wix API-key auth is the raw key (NOT "Bearer …") plus wix-site-id.
+      expect(init.headers).toHaveProperty('Authorization', 'wix_test_key');
+      expect(init.headers).toHaveProperty('wix-site-id', 'site-id-abc');
 
-      const [createUrl, createInit] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect(createUrl).toBe('https://www.wixapis.com/blog/v3/posts');
-      expect(createInit.headers).toHaveProperty('Authorization', 'Bearer wix_test_key');
-      expect(createInit.headers).toHaveProperty('wix-site-id', 'site-id-abc');
-
-      const [patchUrl] = mockFetch.mock.calls[1] as [string, RequestInit];
-      expect(patchUrl).toBe('https://www.wixapis.com/blog/v3/posts/post-abc');
+      const body = JSON.parse(init.body as string);
+      expect(body.publish).toBe(true);
+      expect(body.draftPost.title).toBe('NIS2 Compliance Guide');
+      expect(body.draftPost.memberId).toBe('member-xyz');
+      expect(body.draftPost.media).toBeUndefined();
 
       expect(result.externalId).toBe('post-abc');
       expect(result.url).toBe('https://apire.io/blog/nis2');
     });
 
-    it('publishes directly when wixPostId is present', async () => {
-      mockFetch.mockResolvedValueOnce(
-        jsonResponse({ post: { id: 'post-existing', url: 'https://apire.io/blog/x' } }),
-      );
+    it('imports an https cover image and attaches it as media', async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({
+            file: {
+              id: 'wixmedia_123~mv2.png',
+              url: 'https://static.wixstatic.com/media/wixmedia_123~mv2.png',
+            },
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ draftPost: { id: 'post-img', url: 'https://apire.io/blog/x' } }));
 
-      const draft = makeDraft({
-        payload: { title: 'Test', wixPostId: 'post-existing' },
-      });
+      const draft = makeDraft({ assets: { imageUrl: 'https://hailmery-api.example/api/assets/k.png' } });
       const result = await adapter.publish(draft);
 
-      expect(mockFetch).toHaveBeenCalledOnce();
-      const [url] = mockFetch.mock.calls[0] as [string];
-      expect(url).toBe('https://www.wixapis.com/blog/v3/posts/post-existing');
-      expect(result.externalId).toBe('post-existing');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const [importUrl, importInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(importUrl).toBe('https://www.wixapis.com/site-media/v1/files/import');
+      const importBody = JSON.parse(importInit.body as string);
+      expect(importBody.url).toBe('https://hailmery-api.example/api/assets/k.png');
+      expect(importBody.mediaType).toBe('IMAGE');
+
+      const [createUrl, createInit] = mockFetch.mock.calls[1] as [string, RequestInit];
+      expect(createUrl).toBe('https://www.wixapis.com/blog/v3/draft-posts');
+      const createBody = JSON.parse(createInit.body as string);
+      expect(createBody.draftPost.media).toEqual({
+        displayed: true,
+        custom: true,
+        altText: 'NIS2 Compliance Guide',
+        wixMedia: {
+          image: {
+            id: 'wixmedia_123~mv2.png',
+            url: 'https://static.wixstatic.com/media/wixmedia_123~mv2.png',
+          },
+        },
+      });
+
+      expect(result.externalId).toBe('post-img');
+    });
+
+    it('skips a base64 data: image (not https) and publishes text-only', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ draftPost: { id: 'post-b64' } }));
+
+      const draft = makeDraft({ assets: { imageUrl: 'data:image/png;base64,AAAA' } });
+      const result = await adapter.publish(draft);
+
+      expect(mockFetch).toHaveBeenCalledOnce(); // no import attempted
+      const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.draftPost.media).toBeUndefined();
+      expect(result.externalId).toBe('post-b64');
+    });
+
+    it('falls back to a text-only post when the cover image import fails', async () => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ error: 'forbidden' }, 403)) // import fails
+        .mockResolvedValueOnce(jsonResponse({ draftPost: { id: 'post-noimg' } }));
+
+      const draft = makeDraft({ assets: { imageUrl: 'https://hailmery-api.example/api/assets/k.png' } });
+      const result = await adapter.publish(draft);
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const createBody = JSON.parse((mockFetch.mock.calls[1][1] as RequestInit).body as string);
+      expect(createBody.draftPost.media).toBeUndefined(); // import failed → no cover, still publishes
+      expect(result.externalId).toBe('post-noimg');
     });
   });
 
   describe('fetchMetrics', () => {
-    it('returns empty metrics', async () => {
+    it('returns empty metrics (Wix has no per-post analytics endpoint here)', async () => {
       const metrics = await adapter.fetchMetrics('any-id');
-      expect(metrics.impressions).toBe(0);
-      expect(metrics.clicks).toBe(0);
+      expect(metrics).toEqual({ impressions: 0, clicks: 0, engagement: 0, attributedLeads: 0 });
     });
   });
 
   describe('quotaState', () => {
     it('returns connected on success', async () => {
-      mockFetch.mockResolvedValueOnce(jsonResponse({ posts: [] }));
+      mockFetch.mockResolvedValueOnce(jsonResponse({ draftPosts: [] }));
       const quota = await adapter.quotaState();
       expect(quota.connected).toBe(true);
     });
@@ -122,12 +172,12 @@ describe('WixBlogAdapter', () => {
   });
 
   describe('error handling', () => {
-    it('throws AdapterHttpError on 429', async () => {
+    it('throws AdapterHttpError on 429 from draft-post create', async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({}, 429));
       await expect(adapter.publish(makeDraft())).rejects.toThrow('HTTP 429');
     });
 
-    it('throws AdapterHttpError on 500', async () => {
+    it('throws AdapterHttpError on 500 from draft-post create', async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({}, 500));
       await expect(adapter.publish(makeDraft())).rejects.toThrow('HTTP 500');
     });

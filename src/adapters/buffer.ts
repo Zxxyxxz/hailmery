@@ -68,6 +68,37 @@ interface CreatePostResponse {
   errors?: Array<{ message: string; extensions?: { code?: string } }>;
 }
 
+// Post statistics. `Post.metrics` is a list of { type, value, unit }; the
+// available `type`s vary by network — LinkedIn reports impressions, reactions,
+// comments, shares, engagementRate; X reports likes/retweets/replies; etc. The
+// `value` is a Float (counts for `unit:"count"`, a ratio for `unit:"percentage"`).
+// `Query.post` takes an `input: { id: PostId! }`. Verified live against the
+// Buffer GraphQL API (a sent LinkedIn post returned impressions=67, reactions=3,
+// shares=1). Stale/deleted refs return a NOT_FOUND error and a null post.
+const POST_METRICS = `query GetPostMetrics($id: PostId!) {
+  post(input: { id: $id }) {
+    id
+    status
+    metrics { type value }
+  }
+}`;
+
+interface PostMetricsResponse {
+  data?: {
+    post?: {
+      id: string;
+      status?: string;
+      metrics?: Array<{ type: string; value: number }> | null;
+    } | null;
+  };
+  errors?: Array<{ message: string; extensions?: { code?: string } }>;
+}
+
+// A draft id is a UUID; a Buffer post id is a 24-char hex (Mongo ObjectId). When
+// the publish pipeline recorded no published_ref it falls back to the draft id —
+// there is no Buffer post to query in that case, so we skip the call.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class BufferAdapter implements ChannelAdapter {
   readonly platform = 'buffer';
   private readonly token: string;
@@ -155,15 +186,64 @@ export class BufferAdapter implements ChannelAdapter {
     };
   }
 
-  async fetchMetrics(_draftId: string): Promise<MetricsResult> {
-    // Buffer API does not expose post engagement metrics programmatically. Real
-    // impressions and engagement for LinkedIn/X posts are fetched via the native
-    // platform analytics APIs (LinkedIn Member Post Analytics API in V2, X
-    // Analytics API in V2). This method is a no-op until native adapters replace
-    // Buffer — returning empty metrics keeps the nightly metrics job from logging
-    // a 401 for every published post (the legacy v1 endpoint rejects the current
-    // OIDC token).
-    return EMPTY_METRICS;
+  async fetchMetrics(externalId: string): Promise<MetricsResult> {
+    // `externalId` is the value the metrics job pulls from content_drafts —
+    // published_ref (the Buffer post id captured at publish) when present, else
+    // the internal draft id as a fallback. Only a real Buffer post id can be
+    // queried; a draft UUID (no ref recorded), a URL-shaped ref (a permalink the
+    // publish pipeline can store as published_ref — not a queryable PostId), or
+    // an empty value all have nothing to fetch, so we return empty without a
+    // wasted round-trip.
+    if (!externalId || UUID_RE.test(externalId) || externalId.startsWith('http')) {
+      return EMPTY_METRICS;
+    }
+
+    // Buffer post statistics are CUMULATIVE since publish — Buffer exposes no
+    // per-window breakdown, so the same totals come back regardless of the
+    // fetch window (1h/24h). True windowed metrics need the LinkedIn/X native
+    // analytics APIs (V2). A cumulative number still beats zero.
+    let body: PostMetricsResponse | null = null;
+    try {
+      const res = await fetch(GRAPHQL_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: POST_METRICS, variables: { id: externalId } }),
+      });
+      body = (await res.json().catch(() => null)) as PostMetricsResponse | null;
+    } catch (err) {
+      console.error(`[buffer:metrics] ${externalId} request failed:`, err instanceof Error ? err.message : err);
+      return EMPTY_METRICS;
+    }
+
+    const post = body?.data?.post;
+    if (!post || !Array.isArray(post.metrics)) {
+      // "Post not found" (stale/deleted ref) or no metrics yet — not an error,
+      // just nothing to record. Degrade to empty so the queue still drains.
+      const reason = body?.errors?.[0]?.extensions?.code ?? body?.errors?.[0]?.message ?? 'no_metrics';
+      console.log(`[buffer:metrics] ${externalId}: ${reason} → empty`);
+      return EMPTY_METRICS;
+    }
+
+    // Map Buffer's per-network metric `type`s onto hailmery's MetricsResult. Each
+    // network only emits one alias per concept (LinkedIn `reactions`, X `likes`),
+    // so summing aliases never double-counts. `engagementRate` (a percentage) is
+    // intentionally excluded — engagement is a raw interaction COUNT here.
+    const byType: Record<string, number> = {};
+    for (const m of post.metrics) byType[m.type] = (byType[m.type] ?? 0) + (Number(m.value) || 0);
+    const sum = (...keys: string[]) => keys.reduce((acc, k) => acc + (byType[k] ?? 0), 0);
+
+    const impressions = Math.round(byType.impressions ?? byType.reach ?? 0);
+    const clicks = Math.round(sum('clicks', 'linkClicks', 'postClicks', 'urlClicks'));
+    const engagement = Math.round(
+      sum('reactions', 'likes', 'favorites') +
+        sum('comments', 'replies') +
+        sum('shares', 'retweets', 'reposts'),
+    );
+
+    return { impressions, clicks, engagement, attributedLeads: 0 };
   }
 
   async quotaState(): Promise<QuotaState> {
