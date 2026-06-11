@@ -333,24 +333,31 @@
 
 ## Brand colors (canonical)
 
-- Deep Blue #060C2E
+> Extracted from the live apire.io CSS (June 2026). The old navy `#060C2E` /
+> electric-blue `#18A4FB` / light-blue `#60CFFF` values are deprecated — do not use them.
+
+- Pure Black #000000 (primary background)
+- Near-Black #0a0a0f (surface)
+- Dark Card #0f0f1a (cards)
 - White #FFFFFF
-- Bright Blue #18A4FB
-- Light Blue #60CFFF
+- Purple #7c3aed (primary accent — dominant brand color)
+- Bright Purple #8b5cf6
+- Light Purple #a78bfa
+- Cyan #06b6d4 (secondary accent)
+- Bright Cyan #22d3ee
+- Blue #2563eb (gradient stop only)
 - Light Gray #F5F6FA
-- Black #000000
 - Medium Gray #6B7280
-- Success Green #10B981
+- Emerald #10B981 (compliance/defense)
 - Warning Orange #F59E0B
 - Error Red #EF4444
-- Info Blue #3B82F6
-- Dark Blue (background gradient end) #0A1854
 
 ## Typography
 
-- Inter (primary typeface, geometric sans-serif, Open Font License)
-- JetBrains Mono (code typography)
+- Poppins (display/primary typeface, geometric sans-serif, Open Font License)
+- JetBrains Mono (mono/labels/code typography)
 - Fira Code (code typography alternative)
+- Inter (legacy — deprecated in favor of Poppins per live apire.io)
 
 ## Domains and endpoints
 

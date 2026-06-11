@@ -3,18 +3,63 @@
 **What this file contains:** APIRE's complete visual design system — exact hex codes, font family, logo rules, spacing/border/shadow tokens, icon style guidance, photography direction. Use this for any generated content that includes image prompts, design briefs, or visual references.
 
 **Sources:**
-- `APIRE - Brand Guidelines & Visual Identity.docx` (primary)
+- Live `apire.io` site CSS (primary, extracted from `apire-site.pages.dev` — single source of truth as of June 2026)
+- `APIRE - Brand Guidelines & Visual Identity.docx` (historical; superseded where it conflicts with the live CSS)
 - `APIRE - Complete Brand Context Document.docx`
+
+---
+
+## MACHINE-READABLE COLOR SPECIFICATION (for AI image generation)
+
+⚠️ IMPORTANT: The values below supersede any other color mentions in
+this document. These are extracted from the live apire.io CSS and are
+the single source of truth.
+
+BACKGROUND_PRIMARY: #000000 (pure black — fills 65-75% of image)
+BACKGROUND_SURFACE: #0a0a0f (near-black surface)
+BACKGROUND_CARD: #0f0f1a (dark card surfaces)
+
+ACCENT_PRIMARY: #7c3aed (purple — dominant light source and accent)
+ACCENT_BRIGHT: #8b5cf6 (bright purple — glows, highlights)
+ACCENT_LIGHT: #a78bfa (light purple — secondary highlights)
+ACCENT_SECONDARY: #06b6d4 (cyan — secondary accent only)
+ACCENT_CYAN: #22d3ee (bright cyan — used sparingly)
+
+GRADIENT_HERO: purple #7c3aed → blue #2563eb → cyan #06b6d4
+GRADIENT_BRAND: purple #8b5cf6 → cyan #06b6d4
+GRADIENT_CARD_ACCENT: purple #7c3aed → cyan #06b6d4 → transparent
+
+FONT_DISPLAY: Poppins
+FONT_MONO: JetBrains Mono
+
+GLOW_PRIMARY: rgba(124,58,237,0.18) — purple ambient glow
+GLOW_SECONDARY: rgba(6,182,212,0.12) — cyan ambient glow
+
+FORBIDDEN COLORS (must NOT appear in APIRE images):
+- NO magenta or pink (#F472B6, #c026d3) — OSM brand color
+- NO warm tones (orange #fb923c, amber #F59E0B, yellow)
+- NO red tones unless representing critical alerts
+- NO generic grey/silver server room aesthetic
+- NO electric blue (#18A4FB) — old incorrect value, no longer used
+- NO deep navy (#060C2E) — old incorrect value, no longer used
+- NO bright white light sources
+
+IMAGE LIGHTING SPECIFICATION:
+- Primary light source: purple (#7c3aed), atmospheric glow
+- Secondary light: cyan (#06b6d4), accent highlights
+- All shadows: pure black (#000000) base
+- Atmosphere: purple-tinted darkness with subtle cyan accents
+- Color temperature: cool (6500K+), never warm
 
 ---
 
 ## Logo
 
-**Primary logo:** White "APIRE" text in all caps, clean modern sans-serif typeface. Typically displayed on dark blue background (#060C2E).
+**Primary logo:** White "APIRE" text in all caps, clean modern sans-serif typeface. Typically displayed on a pure black background (#000000) with a purple/cyan ambient glow.
 
 **Logo variations:**
-- **Primary:** White on dark blue
-- **Reversed:** Dark blue on white
+- **Primary:** White on black
+- **Reversed:** Black on white
 - **Monochrome:** Black on white (print); white on black (dark mode)
 
 **Specifications:**
@@ -33,7 +78,7 @@ DO:
 DON'T:
 - Stretch, distort, or rotate
 - Change logo colors outside approved palette
-- Add effects (shadows, glows, gradients) to the logo
+- Add effects (shadows, glows, gradients) to the logo itself
 - Place on busy backgrounds that reduce legibility
 - Recreate or modify the logo typeface
 
@@ -41,53 +86,70 @@ DON'T:
 
 ## Color palette
 
+> The live apire.io aesthetic is a **pure-black canvas lit by purple**, with
+> cyan as a secondary accent. Purple (#7c3aed) is the dominant brand color;
+> cyan (#06b6d4) supports it; blue (#2563eb) appears only inside gradients.
+
 ### Primary colors
 
 | Role | Name | Hex | RGB | Meaning / Usage |
 |---|---|---|---|---|
-| Primary background | **Deep Blue** | `#060C2E` | 6, 12, 46 | Trust, security, professionalism, depth. Headers, navigation, main CTAs, hero sections. |
-| Primary text / logo | **White** | `#FFFFFF` | 255, 255, 255 | Clarity, simplicity, transparency. Text on dark backgrounds, logo on dark, clean space. |
+| Primary background | **Pure Black** | `#000000` | 0, 0, 0 | Depth, focus, premium security. The dominant canvas — fills the majority of every surface and image. |
+| Surface | **Near-Black** | `#0a0a0f` | 10, 10, 15 | Sections and panels lifted just off the pure-black base. |
+| Card | **Dark Card** | `#0f0f1a` | 15, 15, 26 | Card and container surfaces, subtly elevated. |
+| Primary text / logo | **White** | `#FFFFFF` | 255, 255, 255 | Clarity, simplicity, transparency. Text on dark backgrounds, logo on black, clean space. |
 
 ### Accent colors
 
 | Role | Name | Hex | RGB | Meaning / Usage |
 |---|---|---|---|---|
-| Primary accent | **Bright Blue** | `#18A4FB` | 24, 164, 251 | Innovation, technology, action, energy. CTAs, links, highlights, interactive elements, icons. |
-| Secondary accent | **Light Blue** | `#60CFFF` | 96, 207, 255 | Approachability, clarity, modern tech. Gradients, hover states, secondary highlights. |
+| Primary accent | **Purple** | `#7c3aed` | 124, 58, 237 | The dominant brand color. CTAs, links, highlights, primary glow / light source, key interactive elements. |
+| Bright purple | **Bright Purple** | `#8b5cf6` | 139, 92, 246 | Glows, hover highlights, gradient stops, stat numbers. |
+| Light purple | **Light Purple** | `#a78bfa` | 167, 139, 250 | Text accents, secondary highlights, subtle detail. |
+| Secondary accent | **Cyan** | `#06b6d4` | 6, 182, 212 | Secondary accent only — pairs with purple in gradients and accent highlights. |
+| Bright cyan | **Bright Cyan** | `#22d3ee` | 34, 211, 238 | Used sparingly for the brightest cyan highlights. |
+| Gradient blue | **Blue** | `#2563eb` | 37, 99, 235 | Used sparingly — only as the middle stop of the hero gradient. |
 
 ### Supporting colors
 
 | Role | Name | Hex | RGB | Usage |
 |---|---|---|---|---|
-| Background | **Light Gray** | `#F5F6FA` | 245, 246, 250 | Section backgrounds, cards, subtle separation. |
-| Body text | **Black** | `#000000` | 0, 0, 0 | Body text on light backgrounds, high-contrast elements. |
+| Light surface | **Light Gray** | `#F5F6FA` | 245, 246, 250 | Light-theme section backgrounds, cards, subtle separation (docs/forms only). |
+| Body text (light) | **Black** | `#000000` | 0, 0, 0 | Body text on light backgrounds, high-contrast elements. |
 | Secondary text | **Medium Gray** | `#6B7280` | 107, 114, 128 | Secondary text, captions, metadata. |
 
-### Semantic colors
+### Semantic colors (product UI states only — NOT for marketing imagery)
 
 | State | Hex | Usage |
 |---|---|---|
-| Success Green | `#10B981` | Success messages, positive metrics, "threat blocked" indicators |
-| Warning Orange | `#F59E0B` | Warnings, medium-priority alerts |
-| Error Red | `#EF4444` | Errors, critical alerts, high-priority threats |
-| Info Blue | `#3B82F6` | Informational messages, tips, guidance |
+| Success / Defense Emerald | `#10B981` | Success messages, positive metrics, "threat blocked" / compliance indicators. Compliance/defense contexts only. |
+| Warning Orange | `#F59E0B` | Warnings, medium-priority alerts (UI only — warm tones are forbidden in generated imagery). |
+| Error Red | `#EF4444` | Errors, critical alerts, high-priority threats. |
+| Info | `#2563eb` | Informational messages, tips, guidance. |
 
 ### Gradients
 
-- **Primary gradient (CTAs & highlights):** `#18A4FB → #60CFFF`, direction 135deg (diagonal) or 90deg (vertical). Use for primary buttons, featured sections.
-- **Background gradient (hero sections):** `#060C2E → #0A1854`, direction 180deg (top to bottom).
+- **Hero gradient:** `#7c3aed → #2563eb → #06b6d4` (purple → blue → cyan), direction 135deg. Use for hero sections and large feature surfaces.
+- **Brand gradient (CTAs & highlights):** `#8b5cf6 → #06b6d4` (bright purple → cyan), direction 135deg. Use for primary buttons and featured callouts.
+- **Card accent gradient:** `#7c3aed → #06b6d4 → transparent` (purple → cyan → transparent), direction 90deg. Use as a thin top-border accent on cards.
+- **Stat numbers:** `#8b5cf6 → #06b6d4` (bright purple → cyan), direction 135deg. Use for large numeric highlights.
+
+### Ambient glow system
+
+- **Primary glow:** `rgba(124,58,237,0.18)` — purple, anchored top-left. The dominant ambient light.
+- **Secondary glow:** `rgba(6,182,212,0.12)` — cyan, anchored top-right. A subtle counter-accent.
 
 ### Color combinations
 
-- **High contrast (primary):** Deep Blue (`#060C2E`) + White (`#FFFFFF`). Use for headers, navigation, hero sections.
-- **Accent combination:** Bright Blue (`#18A4FB`) + Deep Blue (`#060C2E`). Use for CTAs, interactive elements.
+- **High contrast (primary):** Pure Black (`#000000`) + White (`#FFFFFF`). Use for headers, navigation, hero sections.
+- **Accent combination:** Purple (`#7c3aed`) + Pure Black (`#000000`). Use for CTAs, interactive elements, glows.
 - **Light theme:** White (`#FFFFFF`) + Black (`#000000`) + Light Gray (`#F5F6FA`). Use for content areas, documentation, forms.
 
 ### Accessibility (WCAG AA verified)
 
-- Deep Blue on White: **15.8 : 1** ✅
-- White on Deep Blue: **15.8 : 1** ✅
-- Bright Blue on Deep Blue: **4.8 : 1** ✅
+- White on Pure Black: **21 : 1** ✅
+- Purple (`#7c3aed`) on Pure Black: **5.1 : 1** ✅
+- Light Purple (`#a78bfa`) on Pure Black: **8.9 : 1** ✅
 - Black on White: **21 : 1** ✅
 - Medium Gray on White: **4.6 : 1** ✅
 
@@ -97,19 +159,16 @@ All primary color combinations meet WCAG AA (4.5 : 1 for normal text, 3 : 1 for 
 
 ## Typography
 
-### Primary typeface: **Inter**
+### Display typeface: **Poppins** · Mono typeface: **JetBrains Mono**
 
-- **Family:** Inter
-- **Designer:** Rasmus Andersson
-- **Classification:** Geometric sans-serif
-- **License:** Open Font License (free for commercial use)
+- **Display / headings:** Poppins (geometric sans-serif) — headlines, section titles, display text.
+- **Mono / labels / code:** JetBrains Mono — monospace labels, eyebrow tags, code, metrics.
+- **License:** Both Open Font License (free for commercial use).
 
-**Why Inter:**
-- Optimized for screen readability
-- Excellent legibility at all sizes
-- Modern, neutral, professional
-- Wide language support
-- Variable font technology for precise weight control
+**Why Poppins + JetBrains Mono:**
+- Poppins gives a modern, confident, slightly geometric display voice.
+- JetBrains Mono labels reinforce the technical, security-engineering tone.
+- Both render cleanly on dark backgrounds and have wide language support.
 
 ### Font weights and usage
 
@@ -133,36 +192,39 @@ All primary color combinations meet WCAG AA (4.5 : 1 for normal text, 3 : 1 for 
 | Body Large | 18px | Regular | 1.6 | 0 |
 | Body Regular | 16px | Regular | 1.6 | 0 |
 | Body Small | 14px | Regular | 1.5 | 0 |
-| Caption | 12px | Regular or Medium | 1.4 | 0.01em |
+| Caption / label | 12px | Regular or Medium (JetBrains Mono) | 1.4 | 0.01em |
 
 ### Web font stack (fallback)
 
 ```css
-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+/* Display */
+font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+/* Mono / labels / code */
+font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace;
 ```
 
 ### Print / Office
 
-- Primary: Inter
+- Primary: Poppins
 - Fallback: Arial, Helvetica
 
 ### Code typography
 
-- **Monospace font:** JetBrains Mono or Fira Code
+- **Monospace font:** JetBrains Mono
 - Sizes: 14–16px
-- Background: Light gray (`#F5F6FA`) or Deep Blue (`#060C2E`)
+- Background: Dark Card (`#0f0f1a`) or Near-Black (`#0a0a0f`)
 
 ### Typography best practices
 
 DO:
-- Use Inter for all brand communications
+- Use Poppins for display/headings and JetBrains Mono for labels/code
 - Maintain consistent hierarchy
 - Use appropriate line heights (1.5–1.6 for body)
 - Limit to 2–3 font weights per design
 - Ensure sufficient contrast for readability
 
 DON'T:
-- Mix Inter with other typefaces (except code fonts)
+- Mix in unrelated typefaces beyond Poppins + JetBrains Mono
 - Use too many font weights in one design
 - Set body text below 14px
 - Use tight line heights (<1.4) for body text
@@ -174,21 +236,21 @@ DON'T:
 
 ### Design philosophy
 
-APIRE's visual style is **modern, minimal, and security-focused**. Prioritize clarity over decoration. Clean layouts, ample white space, purposeful design elements that reinforce *security without friction*.
+APIRE's visual style is **modern, dark, and security-focused** — a pure-black canvas lit by purple. Prioritize clarity and depth over decoration. Clean layouts, purposeful glow, purposeful design elements that reinforce *security without friction*.
 
 ### Key visual characteristics
 
-1. **Clean, minimal layouts** — ample padding and white space, clear visual hierarchy, grid-based alignment.
-2. **Dark-to-light contrast** — heavy use of deep blue backgrounds with white space for breathing room.
-3. **Flat, modern iconography** — flat, monotone SVG icons; blue accents (`#18A4FB`); 2px stroke; rounded corners (2–4px).
-4. **Subtle depth** — minimal use of shadows, soft drop-shadows on cards, elevation through layering rather than heavy shadows.
+1. **Black-first layouts** — pure-black (`#000000`) backgrounds with purple/cyan ambient glow for depth, clear visual hierarchy, grid-based alignment.
+2. **Purple as the primary light** — purple (`#7c3aed`) glow is the dominant light source; cyan (`#06b6d4`) is the secondary accent.
+3. **Flat, modern iconography** — flat, monotone SVG icons; purple accents (`#7c3aed`); 2px stroke; rounded corners (2–4px).
+4. **Subtle depth** — elevation through layering (near-black → dark card) and ambient glow rather than heavy drop shadows.
 
-### Shadows
+### Shadows & glow
 
-- **Card shadow (default):** `0 2px 8px rgba(0, 0, 0, 0.1)`
-- **Card shadow (hover):** `0 4px 16px rgba(0, 0, 0, 0.15)`
-- **Button shadow (subtle):** `0 1px 3px rgba(0, 0, 0, 0.12)`
-- **Modal / overlay shadow:** `0 8px 32px rgba(0, 0, 0, 0.2)`
+- **Card shadow (default):** `0 2px 8px rgba(0, 0, 0, 0.4)` on dark surfaces.
+- **Purple glow (primary):** `0 0 48px rgba(124, 58, 237, 0.18)`.
+- **Cyan glow (secondary):** `0 0 48px rgba(6, 182, 212, 0.12)`.
+- **Button shadow (subtle):** `0 1px 3px rgba(0, 0, 0, 0.5)`.
 
 ### Border radius
 
@@ -211,8 +273,8 @@ APIRE's visual style is **modern, minimal, and security-focused**. Prioritize cl
 ### Animation & transitions
 
 - Standard transition: `all 0.2s ease-in-out;`
-- Hover: buttons get slight brightness increase + gradient shift; cards get elevation increase (shadow); links shift to bright blue (`#18A4FB`).
-- Loading: skeleton screens with subtle pulse animation. Spinner: rotating circle in bright blue.
+- Hover: buttons get a slight brightness increase + gradient shift; cards get an elevation/glow increase; links shift to purple (`#7c3aed`).
+- Loading: skeleton screens with subtle pulse animation. Spinner: rotating circle in purple.
 - Micro-interactions: button press → slight scale down (0.98); success → checkmark animation; error → shake animation.
 
 ---
@@ -222,7 +284,7 @@ APIRE's visual style is **modern, minimal, and security-focused**. Prioritize cl
 - **Style:** Flat, outlined (not filled).
 - **Stroke:** 2px width, rounded line caps and joins.
 - **Default size:** 24px × 24px. Scalable to 16px, 32px, 48px.
-- **Colors:** Bright Blue (`#18A4FB`) primary; White on dark backgrounds; Medium Gray for neutral; semantic colors for state.
+- **Colors:** Purple (`#7c3aed`) primary; White on dark backgrounds; Medium Gray for neutral; Cyan (`#06b6d4`) for secondary accent.
 
 **Icon themes used in APIRE materials:**
 - **Security:** Shield, lock, key, fingerprint
@@ -238,9 +300,9 @@ APIRE's visual style is **modern, minimal, and security-focused**. Prioritize cl
 
 **Approach:**
 - Flat, geometric illustrations
-- Limited color palette (blues, white, gray)
+- Limited color palette (purple, cyan, white on black)
 - Abstract representations of security concepts
-- **No** photorealistic or skeuomorphic elements
+- **No** photorealistic or skeuomorphic elements in flat illustration
 - **No** playful mascots or characters
 
 **Themes:**
@@ -252,14 +314,14 @@ APIRE's visual style is **modern, minimal, and security-focused**. Prioritize cl
 
 ---
 
-## Photography direction
+## Photography & generated imagery direction
 
 **Characteristics:**
 - Modern, professional environments
 - Technology and security themes
 - Diverse, authentic people
-- Natural lighting with slight blue tint
-- Clean, uncluttered backgrounds
+- Cool lighting with a purple tint (never warm)
+- Clean, uncluttered backgrounds against pure black
 
 **Subjects:**
 - Security professionals at work
@@ -273,24 +335,26 @@ APIRE's visual style is **modern, minimal, and security-focused**. Prioritize cl
 - Overly staged or artificial scenarios
 - Outdated technology
 - Cluttered or distracting backgrounds
+- Warm tones, generic grey server rooms, magenta/pink, bright white light sources
 
 **Image treatment:**
-- Slight blue tint to align with brand colors
-- High contrast for clarity
-- Desaturate slightly for professional look
-- Dark blue (`#060C2E`) overlay at 60–80% opacity for hero sections
-- Gradient overlays for text readability
+- Pure-black (`#000000`) base; purple (`#7c3aed`) as the dominant atmospheric glow / light source
+- Cyan (`#06b6d4`) as a secondary accent highlight
+- Cool color temperature (6500K+), high contrast for clarity
+- Purple-tinted darkness; subtle cyan accents
+- Gradient overlays for text readability when text is added later in layout (not inside generated images)
 
 ---
 
 ## Diagrams & technical illustrations
 
 **Style:**
-- Clean, minimal line diagrams
-- Blue (`#18A4FB`) for primary elements
-- Gray (`#6B7280`) for secondary elements
+- Clean, minimal line diagrams on dark backgrounds
+- Purple (`#7c3aed`) for primary elements
+- Cyan (`#06b6d4`) for secondary elements
+- Gray (`#6B7280`) for tertiary elements
 - Arrows / connectors with 2px stroke
-- Clear labels in Inter
+- Clear labels in Poppins / JetBrains Mono
 
 **Common diagrams APIRE uses:**
 - Architecture diagrams (APIRE as middleware between app and AI providers)
@@ -304,34 +368,34 @@ APIRE's visual style is **modern, minimal, and security-focused**. Prioritize cl
 ## Application examples
 
 ### Website hero
-- Background: Deep Blue (`#060C2E`) with subtle gradient
-- Headline: Inter Bold, 56px, white
-- Subheading: Inter Regular, 20px, white at 80% opacity
-- CTA button: Bright Blue → Light Blue gradient
-- Supporting image: Abstract security illustration or product screenshot
+- Background: Pure Black (`#000000`) with purple/cyan ambient glow
+- Headline: Poppins Bold, 56px, white
+- Subheading: Poppins Regular, 20px, white at 80% opacity
+- CTA button: Bright Purple → Cyan gradient (`#8b5cf6 → #06b6d4`)
+- Supporting image: Abstract security illustration or product screenshot on black
 
 ### Feature cards
-- Background: White (`#FFFFFF`)
-- Border: None or 1px Light Gray
-- Shadow: `0 2px 8px rgba(0,0,0,0.1)`
-- Icon: Bright Blue (`#18A4FB`), 32px
-- Title: Inter SemiBold, 20px, Black
-- Description: Inter Regular, 16px, Medium Gray
+- Background: Dark Card (`#0f0f1a`)
+- Top accent: Purple → Cyan → transparent gradient bar
+- Shadow/glow: `0 0 48px rgba(124,58,237,0.18)`
+- Icon: Purple (`#7c3aed`), 32px
+- Title: Poppins SemiBold, 20px, White
+- Description: Poppins Regular, 16px, light gray
 
 ### Email
-- Header: Deep Blue background, white logo, left-aligned
-- Body: White background, Black text, Inter Regular 16px
-- Blue links and CTAs
+- Header: Pure Black background, white logo, left-aligned
+- Body: White background, Black text, Poppins Regular 16px (email clients render light for readability)
+- Purple links and CTAs
 - Footer: Light Gray, contact info, social links, unsubscribe
 
 ---
 
 ## Brand asset naming conventions
 
-- Logo files: `APIRE_logo_primary_white.svg`, `APIRE_logo_reversed_blue.svg`, etc.
+- Logo files: `APIRE_logo_primary_white.svg`, `APIRE_logo_reversed_black.svg`, etc.
 - Marketing materials: `APIRE_[material-type]_[version]_[date].ext` (e.g., `APIRE_one-pager_v2_2025-10-18.pdf`)
 
 ## Contradictions / things to flag
 
-- None significant. Visual identity is well-locked in source material.
+- The historical brand `.docx` declared a deep-navy (`#060C2E`) + electric-blue (`#18A4FB`) palette and Inter typography. The **live apire.io site** uses a pure-black (`#000000`) canvas with **purple (`#7c3aed`)** as the dominant accent, cyan (`#06b6d4`) secondary, and **Poppins + JetBrains Mono** typography. The live values in the MACHINE-READABLE COLOR SPECIFICATION above are authoritative; the old navy/blue values are deprecated and must not be used in generated imagery.
 - Brand contact for asset requests / brand questions: `be@ofsecman.io`.

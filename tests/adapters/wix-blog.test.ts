@@ -122,6 +122,51 @@ describe('WixBlogAdapter', () => {
       expect(result.externalId).toBe('post-img');
     });
 
+    it('inserts an inline IMAGE node in the body (reusing the cover media) before the first H2', async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({
+            file: { id: 'wixmedia_inline~mv2.png', url: 'https://static.wixstatic.com/media/wixmedia_inline~mv2.png' },
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse({ draftPost: { id: 'post-inline' } }));
+
+      // Body mirrors a generated blog: intro paragraphs, a "---" divider kept
+      // literal by toRicos, then the first markdown "## " section.
+      const body = ['Intro paragraph one.', 'Intro paragraph two.', '---', '## First section', 'Section body.'].join('\n\n');
+      const draft = makeDraft({
+        payload: { title: 'Inline Image Post', excerpt: 'x', body },
+        assets: { imageUrl: 'https://hailmery-api.example/api/assets/k.png' },
+      });
+      await adapter.publish(draft);
+
+      const createBody = JSON.parse((mockFetch.mock.calls[1][1] as RequestInit).body as string);
+      const nodes = createBody.draftPost.richContent.nodes as Array<Record<string, any>>;
+      const imgIdx = nodes.findIndex((n) => n.type === 'IMAGE');
+      const h2Idx = nodes.findIndex(
+        (n) => n.type === 'PARAGRAPH' && (n.nodes?.[0]?.textData?.text ?? '').startsWith('##'),
+      );
+
+      expect(imgIdx).toBeGreaterThan(-1); // an inline image was inserted
+      expect(imgIdx).toBeLessThan(h2Idx); // …after the intro, before the first "## " heading
+      const img = nodes[imgIdx];
+      expect(img.imageData.image.src.id).toBe('wixmedia_inline~mv2.png'); // reuses the cover media id
+      expect(img.imageData.containerData.alignment).toBe('CENTER');
+      expect(img.imageData.containerData.width.size).toBe('CONTENT');
+      expect(img.imageData.caption).toBe('Inline Image Post');
+      expect(img.imageData.altText).toBe('Inline Image Post');
+      // The cover (featured) image is still attached alongside the inline one.
+      expect(createBody.draftPost.media.wixMedia.image.id).toBe('wixmedia_inline~mv2.png');
+    });
+
+    it('does not insert an inline IMAGE node when there is no cover image', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ draftPost: { id: 'post-noimg' } }));
+      await adapter.publish(makeDraft()); // no assets.imageUrl
+      const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+      const nodes = body.draftPost.richContent.nodes as Array<Record<string, any>>;
+      expect(nodes.some((n) => n.type === 'IMAGE')).toBe(false);
+    });
+
     it('skips a base64 data: image (not https) and publishes text-only', async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({ draftPost: { id: 'post-b64' } }));
 

@@ -53,11 +53,14 @@ async function main() {
     const draft = dr.rows[0];
     if (!draft) throw new Error(`No blog drafts in content_drafts for tenant ${slug}`);
 
+    // Explicit tenant filter (mirrors generateImage) — the app connection can
+    // BYPASS RLS, so without this predicate the vector search would pull other
+    // tenants' visual guidelines into the prompt.
     const vr = await tx.execute<{ chunk_text: string; source_filename: string }>(sql`
       SELECT dc.chunk_text, d.source_filename
       FROM marketing.document_chunks dc
       JOIN marketing.documents d ON dc.document_id = d.id
-      WHERE dc.superseded = false
+      WHERE dc.tenant_id = ${tenant.id} AND dc.superseded = false
       ORDER BY dc.embedding <=> ${vlit}
       LIMIT 6
     `);
@@ -83,6 +86,7 @@ async function main() {
   // ── STEP 1 ONLY: classify + build the prompt. STEP 2 (the provider call) is
   //    intentionally not invoked. ─────────────────────────────────────────
   const built = await buildImagePrompt({
+    tenantId: tenant.id,
     conceptText,
     channel: draft.channel,
     visualGuidelines,

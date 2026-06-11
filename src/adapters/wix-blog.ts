@@ -39,6 +39,8 @@ interface RicosNode {
   nodes: RicosNode[];
   textData?: { text: string; decorations: unknown[] };
   paragraphData?: Record<string, unknown>;
+  headingData?: { level?: number };
+  imageData?: Record<string, unknown>;
 }
 
 /**
@@ -61,6 +63,72 @@ function toRicos(text: string): { nodes: RicosNode[] } {
       paragraphData: {},
     })),
   };
+}
+
+// ── inline in-body image (Ricos IMAGE node) ──────────────────────────────────
+// A Ricos IMAGE node references a Wix media item by id (imageData.image.src.id).
+// We reuse the cover image's imported media id so the same generated visual
+// appears inline in the article body. Schema verified against
+// wix.rich_content.v1.{Node,ImageData,Media,PluginContainerData}: caption/altText
+// are plain strings, image is Media{src:{id}}, width.size enum includes CONTENT.
+
+/** Concatenate the visible text of a PARAGRAPH node's TEXT children. */
+function paragraphText(node: RicosNode): string {
+  if (node.type !== 'PARAGRAPH') return '';
+  return (node.nodes ?? []).map((c) => c.textData?.text ?? '').join('');
+}
+
+/** A horizontal-rule node — a real DIVIDER, or our markdown "---"/"***"/"___"
+ *  kept literal by toRicos(). */
+function isDividerNode(node: RicosNode): boolean {
+  if (node.type === 'DIVIDER') return true;
+  const t = paragraphText(node).trim();
+  return t === '---' || t === '***' || t === '___';
+}
+
+/** A section (H2+) heading — a real Ricos HEADING node of level ≥ 2, or (because
+ *  toRicos keeps markdown literal) a PARAGRAPH whose text starts with a markdown
+ *  "##". We target H2+ specifically so a leading "# Title" (H1) can't pull the
+ *  image to the very top, matching "insert before the first H2". */
+function isSectionHeadingNode(node: RicosNode): boolean {
+  if (node.type === 'HEADING') {
+    const level = node.headingData?.level;
+    return level === undefined || level >= 2;
+  }
+  return paragraphText(node).trimStart().startsWith('##');
+}
+
+/** Build a Ricos IMAGE node referencing an already-imported Wix media id. */
+function buildInlineImageNode(mediaId: string, altText: string, caption: string): RicosNode {
+  return {
+    type: 'IMAGE',
+    id: `img_${crypto.randomUUID()}`,
+    nodes: [],
+    imageData: {
+      containerData: {
+        width: { size: 'CONTENT' },
+        alignment: 'CENTER',
+        textWrap: false,
+      },
+      image: { src: { id: mediaId } },
+      ...(altText ? { altText } : {}),
+      ...(caption ? { caption } : {}),
+    },
+  };
+}
+
+/**
+ * Insert an inline IMAGE node after the intro paragraphs and before the first
+ * section. Insertion point: immediately before the first heading (real HEADING
+ * node or markdown "## …" paragraph); if a "---" divider directly precedes that
+ * heading, place the image above the divider so it sits cleanly after the intro.
+ * If there is no heading at all, fall back to after the 3rd paragraph node.
+ */
+function insertInlineImageNode(nodes: RicosNode[], node: RicosNode): void {
+  let idx = nodes.findIndex(isSectionHeadingNode);
+  if (idx === -1) idx = Math.min(3, nodes.length);
+  if (idx > 0 && isDividerNode(nodes[idx - 1])) idx -= 1;
+  nodes.splice(idx, 0, node);
 }
 
 interface WixDraftPost {
@@ -141,11 +209,20 @@ export class WixBlogAdapter implements ChannelAdapter {
     publish: boolean,
     cover?: { id: string; url?: string } | null,
   ): Promise<{ id: string; url?: string; raw: unknown }> {
+    const richContent = toRicos(content.body);
+    // Inline in-body image: reuse the imported cover media as an IMAGE node placed
+    // after the intro, before the first section heading. Best-effort — only when a
+    // cover media id is available (no cover → text-only body, prior behavior).
+    if (cover?.id) {
+      const caption = content.title.slice(0, 1000).trim();
+      insertInlineImageNode(richContent.nodes, buildInlineImageNode(cover.id, caption, caption));
+    }
+
     const draftPost: Record<string, unknown> = {
       title: content.title,
       excerpt: content.excerpt,
       memberId: this.memberId,
-      richContent: toRicos(content.body),
+      richContent,
     };
     // Cover/featured image. `media.wixMedia.image` references a Wix media item
     // (id + url); `custom:true` marks it as an explicitly-set cover (vs. the

@@ -99,6 +99,7 @@ export interface PromptValidation {
     noBrandNames: boolean; // no company/product names / logos requested
     wordCount: boolean; // 100-250 words
     brandHex: boolean; // includes at least one tenant brand hex
+    apireColors?: boolean; // APIRE only: purple (#7c3aed) + pure black (#000000), no forbidden tokens
   };
   failures: string[];
 }
@@ -182,6 +183,7 @@ export async function generateImage(opts: {
 
   // ── STEP 1: Sonnet 4.6 classifies + builds the prompt, then validates ─────
   const built = await buildImagePrompt({
+    tenantId,
     conceptText,
     channel: loaded.draft.channel,
     visualGuidelines,
@@ -338,6 +340,54 @@ const FEW_SHOT_C = `A cinematic, photorealistic portrait of a senior security pr
 const REQUIRED_NO_TEXT_SUFFIX =
   'no text, no letters, no words, no readable labels anywhere in the image';
 
+// ── APIRE brand-color enforcement ────────────────────────────────────────────
+// APIRE's live brand (apire.io) is a PURE-BLACK canvas lit by PURPLE (#7c3aed),
+// with cyan (#06b6d4) as the secondary accent. Old corpus docs declared a wrong
+// navy (#060C2E) + electric-blue (#18A4FB) palette; the generic gold-standards
+// above still encode that wrong palette. So for APIRE we (a) force the correct
+// palette deterministically (independent of corpus drift), (b) swap in
+// purple/black/cyan gold-standards, (c) inject explicit color requirements, and
+// (d) validate that the built prompt actually carries #7c3aed and #000000.
+// Every other tenant keeps the existing path unchanged.
+const APIRE_TENANT_ID = '6daebc34-7fd0-4542-8527-cfcd125a5f72';
+
+// Canonical APIRE palette (extracted from the live apire.io CSS). Order matters:
+// pure-black background first, then the dominant purple accents, then cyan.
+const APIRE_BRAND_HEXES = ['#000000', '#7c3aed', '#8b5cf6', '#a78bfa', '#06b6d4', '#22d3ee'];
+
+// Tokens that signal a POSITIVE use of the wrong palette and must NEVER appear
+// in an APIRE image prompt — the deprecated navy/blue hexes (+ their phrase
+// forms) and OSM's magenta/pink hexes. Lower-cased for substring matching. We
+// deliberately avoid the bare word "magenta" here so a (discouraged) negative
+// statement like "no magenta" can't trip a false-positive regeneration.
+const APIRE_FORBIDDEN_TOKENS = [
+  '#060c2e', // old deep navy — deprecated
+  '#18a4fb', // old electric blue — deprecated
+  '#60cfff', // old light blue — deprecated
+  '#f472b6', // OSM magenta
+  '#c084fc', // OSM purple-pink
+  '#c026d3', // magenta
+  'deep navy',
+  'electric blue',
+];
+
+// APIRE gold-standard exemplars — identical in structure/composition to the
+// generic A/B/C above, but lit by purple (#7c3aed) on pure black (#000000) with
+// cyan (#06b6d4) accents. NO navy, NO electric blue, NO magenta, NO warm tones.
+const FEW_SHOT_A_APIRE = `A cinematic, photorealistic visualization of layered AI security infrastructure. Five translucent glass shield membranes suspended in pure black space (#000000), purple (#7c3aed) data streams pass through each layer at high velocity — the shields intercept and filter without slowing the flow. Each membrane glows faintly at the edges in bright purple (#8b5cf6) where data touches it, with subtle cyan (#06b6d4) accents at the periphery. A purple atmospheric glow is the dominant light source; all shadows fall to pure black (#000000). Motion blur in the streams communicates speed preserved. The architecture feels vast and authoritative, enterprise scale. Cool color temperature, ultra-sharp, high contrast, photorealistic, no people, ${REQUIRED_NO_TEXT_SUFFIX}.`;
+
+const FEW_SHOT_B_APIRE = `A cinematic, photorealistic close-up of a dark curved monitor in a dim professional workspace. A terminal screen shows a config file being edited — one line highlighted in purple, indicating a single API endpoint being replaced. The highlighted line is the only text visible and it is intentionally unreadable at scroll distance. A developer's hands rest at the keyboard edge, partially visible in frame. The monitor glow in purple (#7c3aed) is the dominant light source in the pure black (#000000) environment, with a faint cyan (#06b6d4) rim accent. Shallow depth of field, sharp at center monitor, bokeh background. Cool, moody, technical, professional. High contrast, no specific URLs or company names, ${REQUIRED_NO_TEXT_SUFFIX}.`;
+
+const FEW_SHOT_C_APIRE = `A cinematic, photorealistic portrait of a senior security professional in their 50s, wearing a dark suit, working late in a modern European enterprise office. Dual monitors display structured data visualizations — compliance dashboards with geometric charts, intentionally unreadable at distance. The professional leans forward studying the screens, expression focused and authoritative. Purple (#7c3aed) screen glow illuminates their face from the left as the dominant light source, with a subtle cyan (#06b6d4) accent. Pure black (#000000) office background, floor-to-ceiling windows show a city at night. Cinematic depth of field, subject sharp, background bokeh. Cool color temperature, enterprise-grade, serious, expert. No readable text on screens, ${REQUIRED_NO_TEXT_SUFFIX}.`;
+
+/** The gold-standard exemplar set for a tenant. APIRE uses the purple/black
+ *  variants; every other tenant keeps the original navy/blue exemplars. */
+function fewShotsFor(isApire: boolean): { a: string; b: string; c: string } {
+  return isApire
+    ? { a: FEW_SHOT_A_APIRE, b: FEW_SHOT_B_APIRE, c: FEW_SHOT_C_APIRE }
+    : { a: FEW_SHOT_A, b: FEW_SHOT_B, c: FEW_SHOT_C };
+}
+
 /**
  * Builds the image-generation prompt with Sonnet 4.6: classify into one of
  * three visual categories, then write a cinematic, brand-accurate prompt that
@@ -346,6 +396,7 @@ const REQUIRED_NO_TEXT_SUFFIX =
  * category, and the validation report.
  */
 export async function buildImagePrompt(args: {
+  tenantId: string;
   conceptText: string;
   channel: string;
   visualGuidelines: string;
@@ -353,31 +404,71 @@ export async function buildImagePrompt(args: {
   dims: string;
   ratio: string;
 }): Promise<PromptBuildResult> {
-  const brandHexes = extractBrandHexes(args.visualGuidelines);
+  const isApire = args.tenantId === APIRE_TENANT_ID;
 
-  const system = buildImageSystemPrompt(brandHexes);
-  const baseUser = buildImageUserPrompt(args, brandHexes);
+  // APIRE: force the correct canonical palette regardless of what the corpus
+  // chunks contain (defence-in-depth against stale navy/blue hexes). Everyone
+  // else: extract the brand hexes from the retrieved visual guidelines as before.
+  const brandHexes = isApire ? APIRE_BRAND_HEXES : extractBrandHexes(args.visualGuidelines);
+
+  const system = buildImageSystemPrompt(brandHexes, isApire);
+  const baseUser = buildImageUserPrompt(args, brandHexes, isApire);
 
   // First attempt.
   let parsed = await runPromptModel(system, baseUser);
-  let validation = validateImagePrompt(parsed.prompt, brandHexes);
+  let validation = validateImagePrompt(parsed.prompt, brandHexes, { tenantId: args.tenantId });
   let attempts = 1;
 
   // Regenerate ONCE on failure, telling the model exactly what to fix.
   if (!validation.passed) {
+    const defaultHexHint = brandHexes.join(', ') || '#060C2E / #18A4FB';
+    // APIRE correction is POSITIVE-ONLY: describe the desired purple/black/cyan
+    // palette, never the banned phrases. Echoing "deep navy"/"electric blue"
+    // here (even as "do not use …") can make the model parrot them back, which
+    // the forbidden-token validator would then misread. Keep it affirmative.
+    const apireCorrection = isApire
+      ? [
+          'CORRECTION REQUIRED (APIRE): rebuild the prompt so it describes a PURE',
+          'BLACK (#000000) background lit by a PURPLE (#7c3aed) atmospheric glow as',
+          'the primary light source, with CYAN (#06b6d4) accent highlights and',
+          'shadows receding to pure black. Use ONLY this purple/black/cyan palette',
+          'and keep the color temperature cool. Describe only the colors you DO',
+          'want — do not write negative color statements. The prompt MUST contain',
+          'both #7c3aed and #000000.',
+        ].join('\n')
+      : '';
     const fixUser = [
       baseUser,
       '',
       'Your previous attempt FAILED validation on: ' + validation.failures.join('; ') + '.',
+      ...(apireCorrection ? ['', apireCorrection, ''] : []),
       'Fix every failure. Reminders:',
       `- The prompt MUST end with: "${REQUIRED_NO_TEXT_SUFFIX}".`,
       '- 100-250 words, cinematic and specific.',
-      `- Use at least one exact tenant brand hex (${brandHexes.join(', ') || '#060C2E / #18A4FB'}).`,
+      `- Use at least one exact tenant brand hex (${defaultHexHint}).`,
       '- Never name any company, product, or logo.',
     ].join('\n');
     parsed = await runPromptModel(system, fixUser);
-    validation = validateImagePrompt(parsed.prompt, brandHexes);
+    validation = validateImagePrompt(parsed.prompt, brandHexes, { tenantId: args.tenantId });
     attempts = 2;
+  }
+
+  // APIRE final safety net: deterministically guarantee the brand colors are in
+  // the prompt that actually reaches the image model — generateImage does NOT
+  // gate on validation.passed, so in the (very unlikely) event Sonnet defied
+  // both attempts, append the canonical palette clause so #7c3aed and #000000
+  // are always present, then re-validate. Makes "MUST contain" a hard guarantee.
+  if (isApire) {
+    const lower = parsed.prompt.toLowerCase();
+    const hasPurple = lower.includes('#7c3aed') || lower.includes('#8b5cf6');
+    const hasBlack = lower.includes('#000000') || lower.includes('pure black');
+    if (!hasPurple || !hasBlack) {
+      parsed.prompt =
+        parsed.prompt.trimEnd() +
+        ' Pure black (#000000) background with a purple (#7c3aed) atmospheric glow as the' +
+        ' primary light source and cyan (#06b6d4) accent highlights.';
+      validation = validateImagePrompt(parsed.prompt, brandHexes, { tenantId: args.tenantId });
+    }
   }
 
   return {
@@ -389,7 +480,14 @@ export async function buildImagePrompt(args: {
   };
 }
 
-function buildImageSystemPrompt(brandHexes: string[]): string {
+function buildImageSystemPrompt(brandHexes: string[], isApire: boolean): string {
+  const fs = fewShotsFor(isApire);
+  // The inline color-guidance line. APIRE is a pure-black canvas lit by purple;
+  // every other tenant keeps the original navy/blue phrasing unchanged.
+  const colorGuidance = isApire
+    ? `- Use APIRE's EXACT brand hex values (${brandHexes.join(', ')}) inline next to the colors you describe — a PURE BLACK (#000000) background with PURPLE (#7c3aed) as the dominant accent and atmospheric light source, and CYAN (#06b6d4) as a secondary accent. Do not invent colors. Describe only the colors you DO want (the purple/black/cyan palette) — never write negative color statements (e.g. "no magenta", "no electric blue", "no deep navy") into the prompt.`
+    : `- Use the tenant's EXACT brand hex values${brandHexes.length ? ` (${brandHexes.join(', ')})` : ''} inline next to the colors you describe — deep navy background and electric blue accents. Do not invent colors.`;
+
   return [
     'You are an art director writing a single image-generation prompt for a photorealistic image model (Gemini 3 Pro Image).',
     'You work in TWO steps, then output strict JSON.',
@@ -411,20 +509,38 @@ function buildImageSystemPrompt(brandHexes: string[]): string {
     'STEP 2 — WRITE the prompt for the chosen category, matching the gold-standard exemplar for that category EXACTLY in structure, tone, and cinematic specificity.',
     '',
     'GOLD STANDARD — CATEGORY A (atmospheric):',
-    FEW_SHOT_A,
+    fs.a,
     '',
     'GOLD STANDARD — CATEGORY B (technical_human):',
-    FEW_SHOT_B,
+    fs.b,
     '',
     'GOLD STANDARD — CATEGORY C (professional_portrait):',
-    FEW_SHOT_C,
+    fs.c,
     '',
     'NON-NEGOTIABLE RULES for ALL categories:',
     '- Never request company names, product names, logos, or brand marks inside the image.',
     '- Never request readable URLs, code, or specific text — "intentionally unreadable at distance" is fine.',
     `- ALWAYS end the prompt with: "${REQUIRED_NO_TEXT_SUFFIX}".`,
-    `- Use the tenant's EXACT brand hex values${brandHexes.length ? ` (${brandHexes.join(', ')})` : ''} inline next to the colors you describe — deep navy background and electric blue accents. Do not invent colors.`,
+    colorGuidance,
     '- The prompt must be 100-250 words, specific, and cinematic — never generic.',
+    ...(isApire
+      ? [
+          '',
+          'CRITICAL COLOR REQUIREMENTS FOR APIRE IMAGES:',
+          'APIRE’s live brand is a pure-black canvas lit by purple. You must',
+          'include these exact specifications in the Gemini prompt:',
+          '1. State the dominant background color as exact hex: #000000 (pure black).',
+          '2. State the primary accent / light source as exact hex: #7c3aed (purple).',
+          '3. State the secondary accent as exact hex: #06b6d4 (cyan).',
+          '4. Use ONLY this palette — do not introduce magenta, pink, warm tones',
+          '   (orange/amber/yellow/red), generic grey server rooms, or bright white',
+          '   light sources. Keep the color temperature cool (6500K+).',
+          '5. Specify lighting as: "purple (#7c3aed) atmospheric glow as the primary',
+          '   light source, cyan (#06b6d4) accent highlights, shadows to pure black".',
+          'The final Gemini prompt MUST contain the hex values #7c3aed and #000000.',
+          'If either is absent, the prompt is incomplete — rebuild it.',
+        ]
+      : []),
     '',
     'OUTPUT — strict JSON only, no prose, no markdown fences:',
     '{ "category": "atmospheric" | "technical_human" | "professional_portrait", "prompt": "<the full image prompt>" }',
@@ -441,13 +557,28 @@ function buildImageUserPrompt(
     ratio: string;
   },
   brandHexes: string[],
+  isApire: boolean,
 ): string {
+  const hexFallback = isApire
+    ? '#000000, #7c3aed, #8b5cf6, #06b6d4'
+    : '(none retrieved — default to deep navy #060C2E + electric blue #18A4FB)';
   return [
     `Image type: ${args.imageType} (target ${args.dims}, aspect ratio ${args.ratio}).`,
     `Paired content channel: ${args.channel}.`,
     '',
     'Tenant brand hex values (use these exact codes — do not substitute):',
-    brandHexes.length ? brandHexes.join(', ') : '(none retrieved — default to deep navy #060C2E + electric blue #18A4FB)',
+    brandHexes.length ? brandHexes.join(', ') : hexFallback,
+    ...(isApire
+      ? [
+          '',
+          'APIRE palette guidance: PURE BLACK (#000000) background, PURPLE (#7c3aed,',
+          'glows #8b5cf6) as the dominant accent + light source, CYAN (#06b6d4) as a',
+          'secondary accent. DO NOT use deep navy #060C2E, electric blue #18A4FB,',
+          'light blue #60CFFF, magenta/pink, warm tones, or grey server rooms — those',
+          'are wrong for APIRE (the corpus may still mention old navy/blue values:',
+          'ignore them in favor of the hex values above).',
+        ]
+      : []),
     '',
     'Content this image accompanies (classify from it, then derive the concept):',
     args.conceptText || '(no draft text available — use an abstract representation of the topic, category A)',
@@ -509,7 +640,11 @@ const NAME_DENYLIST = [
   'wordmark',
 ];
 
-export function validateImagePrompt(prompt: string, brandHexes: string[]): PromptValidation {
+export function validateImagePrompt(
+  prompt: string,
+  brandHexes: string[],
+  opts?: { tenantId?: string },
+): PromptValidation {
   const lower = prompt.toLowerCase();
   const wordCount = prompt.split(/\s+/).filter(Boolean).length;
 
@@ -529,10 +664,40 @@ export function validateImagePrompt(prompt: string, brandHexes: string[]): Promp
   if (!wordCountOk) failures.push(`word count ${wordCount} outside 100-250`);
   if (!brandHex) failures.push('missing tenant brand hex');
 
+  // APIRE-specific palette enforcement. The built prompt must positively carry
+  // purple (#7c3aed or #8b5cf6) AND a pure-black background (#000000 / "pure
+  // black"), and must NOT positively use any deprecated navy/blue or OSM
+  // magenta token. Failures here trigger the single regeneration with the
+  // explicit APIRE correction note.
+  let apireColors: boolean | undefined;
+  if (opts?.tenantId === APIRE_TENANT_ID) {
+    const hasPurple = lower.includes('#7c3aed') || lower.includes('#8b5cf6');
+    const hasBlack = lower.includes('#000000') || lower.includes('pure black');
+    // Scan for POSITIVE use of a forbidden color. Strip negated phrase mentions
+    // first ("no electric blue", "without deep navy", …) so a compliant negative
+    // clause can't false-positive. Hex literals are never negated away — their
+    // mere presence is always a positive (wrong) use.
+    const scan = lower.replace(
+      /\b(?:no|not|never|without|avoid(?:ing)?|free of|minus)\s+(?:[a-z-]+\s+){0,2}(?:deep navy|electric blue|light blue|magenta|pink|warm tones?)\b/g,
+      ' ',
+    );
+    const offendingColor = APIRE_FORBIDDEN_TOKENS.find((t) => scan.includes(t));
+    apireColors = hasPurple && hasBlack && !offendingColor;
+    if (!hasPurple) failures.push('APIRE: missing purple (#7c3aed/#8b5cf6)');
+    if (!hasBlack) failures.push('APIRE: missing pure-black background (#000000)');
+    if (offendingColor) failures.push(`APIRE: uses forbidden color "${offendingColor}"`);
+  }
+
   return {
     passed: failures.length === 0,
     wordCount,
-    checks: { noText, noBrandNames, wordCount: wordCountOk, brandHex },
+    checks: {
+      noText,
+      noBrandNames,
+      wordCount: wordCountOk,
+      brandHex,
+      ...(apireColors !== undefined ? { apireColors } : {}),
+    },
     failures,
   };
 }
@@ -667,6 +832,7 @@ async function callIdeogram(apiKey: string, prompt: string, aspectRatio: string)
 // buildIdeogramPrompt and expected the prompt string back. Keep that contract
 // by delegating to buildImagePrompt and returning just the prompt text.
 export async function buildIdeogramPrompt(args: {
+  tenantId?: string;
   conceptText: string;
   channel: string;
   visualGuidelines: string;
@@ -674,7 +840,7 @@ export async function buildIdeogramPrompt(args: {
   dims: string;
   ratio: string;
 }): Promise<string> {
-  const built = await buildImagePrompt(args);
+  const built = await buildImagePrompt({ ...args, tenantId: args.tenantId ?? '' });
   return built.prompt;
 }
 
