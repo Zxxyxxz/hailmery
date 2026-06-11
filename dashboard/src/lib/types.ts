@@ -287,3 +287,39 @@ export interface GenerateNowResult {
   /** Set when the (best-effort) paired image failed; the draft is still created. */
   imageError?: string | null
 }
+
+// ── Historical Buffer import ────────────────────────────────────────
+
+export interface BufferImportChannelResult {
+  channel: string
+  channelId: string | null
+  fetched: number
+  imported: number
+  skipped: number
+  error?: string
+}
+
+export interface BufferImportTopPerformer {
+  draftId: string
+  channel: string
+  performanceScore: number | null
+  impressions: number
+  engagement: number
+  preview: string
+}
+
+export interface BufferImportInput {
+  profiles: string[]
+  dryRun?: boolean
+}
+
+export interface BufferImportResult {
+  fetched: number
+  imported: number
+  skipped: number
+  scored: number
+  goldenExamples: number
+  dryRun: boolean
+  channels: BufferImportChannelResult[]
+  topPerformers: BufferImportTopPerformer[]
+}

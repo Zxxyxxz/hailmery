@@ -10,21 +10,27 @@ import {
   CheckCircle2,
   Loader2,
   Save,
+  DownloadCloud,
+  Sparkles,
+  AlertTriangle,
+  Check,
 } from 'lucide-react'
 import { useTenant } from '@/lib/tenant-context'
+import { toApiError } from '@/lib/api'
 import {
   useCampaigns,
   useConnections,
   useDeleteDocument,
   useDocuments,
+  useImportBufferHistory,
   usePatchCampaign,
   usePatchSiteConfig,
   useReingestDocument,
   useSiteConfig,
   useUploadDocument,
 } from '@/lib/queries'
-import type { BrandVoice } from '@/lib/types'
-import { SELECTABLE_CHANNELS } from '@/lib/channels'
+import type { BrandVoice, BufferImportResult } from '@/lib/types'
+import { CHANNELS, SELECTABLE_CHANNELS } from '@/lib/channels'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -61,6 +67,9 @@ export default function SettingsPage() {
           <TabsTrigger value="corpus">
             <span className="flex items-center gap-1.5"><FileText className="h-4 w-4" /> Corpus</span>
           </TabsTrigger>
+          <TabsTrigger value="history">
+            <span className="flex items-center gap-1.5"><DownloadCloud className="h-4 w-4" /> Import History</span>
+          </TabsTrigger>
           <TabsTrigger value="schedule">
             <span className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4" /> Schedule</span>
           </TabsTrigger>
@@ -70,6 +79,7 @@ export default function SettingsPage() {
           <TabsContent value="brand"><BrandVoiceTab /></TabsContent>
           <TabsContent value="platforms"><PlatformsTab /></TabsContent>
           <TabsContent value="corpus"><CorpusTab /></TabsContent>
+          <TabsContent value="history"><ImportHistoryTab /></TabsContent>
           <TabsContent value="schedule"><ScheduleTab /></TabsContent>
         </div>
       </Tabs>
@@ -465,6 +475,224 @@ function UploadProgress({
         />
       </div>
     </div>
+  )
+}
+
+// ── Tab — Import History (historical Buffer content) ────────────────
+
+// Buffer-published social channels we can import history for. Keys match the
+// backend's importable channels (twitter == the "X" UI key).
+const IMPORT_CHANNEL_KEYS = ['linkedin', 'twitter', 'instagram', 'facebook'] as const
+
+function ImportHistoryTab() {
+  const { currentId } = useTenant()
+  const { data: connections } = useConnections()
+  const importMut = useImportBufferHistory()
+  const [selected, setSelected] = useState<Record<string, boolean>>({ linkedin: true })
+  const [dryRun, setDryRun] = useState(true)
+  const [result, setResult] = useState<BufferImportResult | null>(null)
+
+  // The result card + mutation error hold raw (tenant-scoped) output in local
+  // state; clear them when the active tenant changes so tenant A's numbers never
+  // linger on tenant B.
+  useEffect(() => {
+    setResult(null)
+    importMut.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId])
+
+  const bufferConnected = !!(connections ?? []).find((c) => c.platform === 'Buffer')?.connected
+  const channels = Object.entries(selected).filter(([, v]) => v).map(([k]) => k)
+
+  function run() {
+    if (!channels.length) return
+    importMut.mutate({ profiles: channels, dryRun }, { onSuccess: (data) => setResult(data) })
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* What this does */}
+      <Card className="space-y-2 p-5">
+        <div className="flex items-center gap-2">
+          <DownloadCloud className="h-4 w-4 text-cyan-400" />
+          <h2 className="text-sm font-semibold text-gray-100">Import historical content</h2>
+        </div>
+        <p className="text-sm text-gray-400">
+          Pulls your already-published Buffer posts and their real engagement into hailmery as{' '}
+          <span className="text-gray-200">measured</span> content. The top performers become golden
+          examples that steer future generation toward what actually worked.
+        </p>
+        <ul className="mt-1 space-y-1 text-xs text-gray-500">
+          <li>• This imports <span className="text-gray-300">historical</span> content for training — it does not publish anything new.</li>
+          <li>• Posts already in hailmery are skipped, so it is safe to re-run.</li>
+          <li>• Better signal here makes every future generated post sound more like your best work.</li>
+        </ul>
+      </Card>
+
+      {/* Channel selection */}
+      <Card className="space-y-4 p-5">
+        <div className="flex items-center justify-between">
+          <Label>Channels to import</Label>
+          <span className="flex items-center gap-1.5 text-xs">
+            <span className={`h-2 w-2 rounded-full ${bufferConnected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+            <span className="text-gray-500">Buffer {bufferConnected ? 'connected' : 'not connected'}</span>
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {IMPORT_CHANNEL_KEYS.map((key) => {
+            const meta = CHANNELS[key]
+            const Icon = meta.icon
+            const on = !!selected[key]
+            return (
+              <button
+                type="button"
+                key={key}
+                onClick={() => setSelected((s) => ({ ...s, [key]: !s[key] }))}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                  on
+                    ? 'border-cyan-500/40 bg-cyan-500/[0.06]'
+                    : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]'
+                }`}
+              >
+                <span
+                  className={`flex items-center justify-center rounded-md border transition-all ${
+                    on ? 'border-cyan-500/60 bg-cyan-500/20 text-cyan-300' : 'border-white/[0.12] bg-white/[0.03]'
+                  }`}
+                  style={{ width: 18, height: 18 }}
+                >
+                  {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                </span>
+                <Icon className={`h-4 w-4 ${meta.iconClass}`} />
+                <span className="text-sm text-gray-200">{meta.label}</span>
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-xs text-gray-600">
+          Only channels connected in Buffer for this tenant will return posts; others are skipped with a note.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-4 pt-1">
+          <Checkbox
+            checked={dryRun}
+            onChange={(v: boolean) => setDryRun(v)}
+            label="Preview only (don't import)"
+          />
+          <Button
+            onClick={run}
+            disabled={importMut.isPending || channels.length === 0 || !bufferConnected}
+            title={!bufferConnected ? 'Connect Buffer first' : undefined}
+          >
+            {importMut.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <DownloadCloud className="h-4 w-4" />
+            )}
+            {dryRun ? 'Preview import' : 'Import selected history'}
+          </Button>
+          {importMut.isPending && (
+            <span className="text-xs text-gray-500">
+              Fetching from Buffer{dryRun ? '' : ', scoring & promoting'}… this can take up to a minute.
+            </span>
+          )}
+        </div>
+
+        {importMut.isError && (
+          <div className="flex items-center gap-2 rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">
+            <AlertTriangle className="h-4 w-4" />
+            {toApiError(importMut.error).error}
+          </div>
+        )}
+      </Card>
+
+      {/* Results */}
+      {result && <ImportResultCard result={result} />}
+    </div>
+  )
+}
+
+function ImportResultCard({ result }: { result: BufferImportResult }) {
+  const importedLabel = result.dryRun ? 'Would import' : 'Imported'
+  const stats: Array<{ label: string; value: number; accent?: string }> = [
+    { label: 'Fetched', value: result.fetched },
+    { label: importedLabel, value: result.imported, accent: 'text-cyan-300' },
+    { label: 'Already existed', value: result.skipped },
+    { label: 'Scored', value: result.scored },
+    { label: 'Golden examples', value: result.goldenExamples, accent: 'text-yellow-300' },
+  ]
+  return (
+    <Card className="space-y-4 p-5">
+      <div className="flex items-center gap-2">
+        {result.dryRun ? (
+          <Sparkles className="h-4 w-4 text-cyan-400" />
+        ) : (
+          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+        )}
+        <h3 className="text-sm font-semibold text-gray-100">
+          {result.dryRun ? 'Preview complete' : 'Import complete'}
+        </h3>
+        {result.dryRun && (
+          <Badge variant="cyan" className="ml-1">dry run — nothing written</Badge>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-3">
+            <div className={`text-2xl font-semibold ${s.accent ?? 'text-gray-100'}`}>{s.value}</div>
+            <div className="text-xs text-gray-500">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-channel breakdown (only when something notable happened) */}
+      {result.channels.some((c) => c.error || c.fetched > 0) && (
+        <div className="space-y-1.5">
+          {result.channels.map((c) => (
+            <div key={c.channel} className="flex items-center gap-2 text-xs">
+              <span className="w-20 text-gray-400">{CHANNELS[c.channel]?.label ?? c.channel}</span>
+              {c.error ? (
+                <span className="flex items-center gap-1 text-red-300">
+                  <AlertTriangle className="h-3 w-3" /> {c.error}
+                </span>
+              ) : (
+                <span className="text-gray-500">
+                  fetched {c.fetched} · {result.dryRun ? 'would import' : 'imported'} {c.imported} · skipped {c.skipped}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Top performers — these are what become golden examples */}
+      {result.topPerformers.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
+            <Sparkles className="h-3.5 w-3.5 text-yellow-300" /> Top imported performers
+          </div>
+          {result.topPerformers.map((p, i) => (
+            <div
+              key={p.draftId}
+              className="flex items-start gap-3 rounded-lg border border-white/[0.04] bg-white/[0.02] px-3 py-2"
+            >
+              <span className="mt-0.5 text-xs text-gray-600">#{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs text-gray-300">{p.preview || '(no text)'}</div>
+                <div className="mt-0.5 text-[11px] text-gray-500">
+                  {p.performanceScore != null && (
+                    <span className="text-yellow-300/90">score {p.performanceScore.toFixed(2)}</span>
+                  )}
+                  {p.performanceScore != null && ' · '}
+                  {p.impressions} impressions · {p.engagement} engagements
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }
 

@@ -365,9 +365,21 @@ export async function syncUmamiPageviews(env: MetricsEnv, db: Db, tenantId: stri
 
 // ── STEP 4 — performance scoring ──────────────────────────────────────
 // performance_score = (clicks*3 + engagement*2 + impressions) / channel median,
-// for every draft published in the last 30 days. Metrics are aggregated as the
-// MAX per metric across a draft's windows (later windows are cumulative supersets).
-export async function scorePerformance(db: Db, tenantId: string): Promise<number> {
+// for every draft published within `windowDays` (default 30). Metrics are
+// aggregated as the MAX per metric across a draft's windows (later windows are
+// cumulative supersets).
+//
+// `windowDays` is parameterised so the historical Buffer import can score MONTHS
+// of back-catalogue in one pass (import-buffer.ts passes a multi-year window) —
+// the nightly cron still uses the 30-day default, which leaves those older
+// import-scored drafts untouched (their COALESCE'd publish time is outside 30d)
+// rather than nulling them. The channel median is computed over the FULL history
+// regardless of windowDays, so scores from different runs stay comparable.
+export async function scorePerformance(
+  db: Db,
+  tenantId: string,
+  windowDays: number = SCORE_WINDOW_DAYS,
+): Promise<number> {
   const rows = await withTenantDb(db, tenantId, async (tx) => {
     const r = await tx.execute<{ id: string }>(sql`
       WITH pub AS (
@@ -376,9 +388,10 @@ export async function scorePerformance(db: Db, tenantId: string): Promise<number
         WHERE cd.tenant_id = ${tenantId}
           AND cd.status IN ('published', 'measured')
           AND COALESCE(
-                (SELECT max(pl.published_at) FROM marketing.publish_log pl WHERE pl.draft_id = cd.id),
+                (SELECT max(pl.published_at) FROM marketing.publish_log pl
+                   WHERE pl.draft_id = cd.id AND pl.tenant_id = ${tenantId}),
                 cd.publish_at, cd.updated_at
-              ) >= now() - ${`${SCORE_WINDOW_DAYS} days`}::interval
+              ) >= now() - ${`${windowDays} days`}::interval
       ),
       m AS (
         SELECT cm.draft_id,
@@ -389,14 +402,28 @@ export async function scorePerformance(db: Db, tenantId: string): Promise<number
         WHERE cm.tenant_id = ${tenantId}
         GROUP BY cm.draft_id
       ),
+      -- Per-channel baseline computed over the tenant's FULL published history,
+      -- independent of windowDays. This keeps the median denominator stable so
+      -- import-scored drafts (full-history window) and nightly-scored drafts
+      -- (30-day window) carry comparable performance_scores — otherwise
+      -- tagGoldenExamples would rank two cohorts normalised against different
+      -- medians against each other.
+      baseline_pop AS (
+        SELECT cd.channel,
+               (COALESCE(m.clicks,0)*3 + COALESCE(m.engagement,0)*2 + COALESCE(m.impressions,0))::numeric AS raw_score
+        FROM marketing.content_drafts cd
+        LEFT JOIN m ON m.draft_id = cd.id
+        WHERE cd.tenant_id = ${tenantId}
+          AND cd.status IN ('published', 'measured')
+      ),
+      baselines AS (
+        SELECT channel, percentile_cont(0.5) WITHIN GROUP (ORDER BY raw_score) AS median
+        FROM baseline_pop WHERE raw_score > 0 GROUP BY channel
+      ),
       scored AS (
         SELECT p.draft_id, p.channel,
                (COALESCE(m.clicks,0)*3 + COALESCE(m.engagement,0)*2 + COALESCE(m.impressions,0))::numeric AS raw_score
         FROM pub p LEFT JOIN m ON m.draft_id = p.draft_id
-      ),
-      baselines AS (
-        SELECT channel, percentile_cont(0.5) WITHIN GROUP (ORDER BY raw_score) AS median
-        FROM scored WHERE raw_score > 0 GROUP BY channel
       )
       UPDATE marketing.content_drafts cd
       SET performance_score = CASE
@@ -415,6 +442,17 @@ export async function scorePerformance(db: Db, tenantId: string): Promise<number
 }
 
 // ── STEP 5 — golden-example tagging + promotion ───────────────────────
+//
+// KNOWN LIMITATION (pre-existing; documented during the Buffer-import review):
+// demotion is asymmetric. Clearing is_golden_example below makes the flag track
+// the current top set, but promoteGoldenExample only ever INSERTs the
+// golden_example document/chunk — nothing prunes the chunk when a draft is later
+// demoted, and RAG retrieval (generation/context.ts) selects purely on
+// document_type='golden_example' AND superseded=false. So a once-promoted post
+// keeps influencing generation even after losing its flag, and the golden corpus
+// grows monotonically. The import's stable-baseline scoring (see scorePerformance)
+// limits churn here, but a full fix — supersede the chunk on demotion, or have
+// retrieval join is_golden_example — is tracked as V2 follow-up.
 interface GoldenRow extends Record<string, any> {
   id: string;
   channel: string;

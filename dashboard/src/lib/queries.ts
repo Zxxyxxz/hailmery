@@ -7,6 +7,8 @@ import { api } from './api'
 import { useTenant } from './tenant-context'
 import type {
   AnalyticsSummary,
+  BufferImportInput,
+  BufferImportResult,
   Campaign,
   CreateCampaignInput,
   DocumentRow,
@@ -377,6 +379,32 @@ export function useKeywords() {
     queryFn: async () => {
       const res = await api.get<{ keywords: GscKeyword[] }>('/api/analytics/keywords')
       return res.data.keywords
+    },
+  })
+}
+
+// ── Historical Buffer import ────────────────────────────────────────
+
+/**
+ * Import the tenant's already-published Buffer history as measured content for
+ * the learning loop. A dry run (dryRun: true) previews counts without writing;
+ * a real run also re-scores and may promote golden examples, so invalidate the
+ * analytics + drafts caches on success.
+ */
+export function useImportBufferHistory() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async (input: BufferImportInput) => {
+      const res = await api.post<BufferImportResult>('/api/import/buffer-history', input)
+      return res.data
+    },
+    onSuccess: (data) => {
+      if (data.dryRun) return
+      qc.invalidateQueries({ queryKey: ['analytics-summary', currentId] })
+      qc.invalidateQueries({ queryKey: ['analytics-top-content', currentId] })
+      qc.invalidateQueries({ queryKey: ['drafts', currentId] })
+      qc.invalidateQueries({ queryKey: ['documents', currentId] })
     },
   })
 }

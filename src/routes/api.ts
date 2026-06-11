@@ -18,6 +18,8 @@ import { runGenerationPipeline } from '../workflows/generation.js';
 import { publishSingleDraft } from '../workflows/publish.js';
 import type { PipelineEnv, GenerationParams, TriggerReason } from '../workflows/types.js';
 import { generateWeeklyIntelligenceBrief } from '../jobs/intelligence.js';
+import { importBufferHistory } from '../jobs/import-buffer.js';
+import type { MetricsEnv } from '../jobs/metrics.js';
 import { generateSocial, SOCIAL_CHANNELS } from '../generation/social.js';
 import { generateBlog } from '../generation/blog.js';
 import { generateEmail } from '../generation/email.js';
@@ -1483,5 +1485,55 @@ api.post('/generate-now', async (c) => {
     );
   } catch (e) {
     return err(c, 500, 'generate_now_failed', (e as Error).message);
+  }
+});
+
+// ── POST /api/import/buffer-history ─────────────────────────────────
+// Import the tenant's already-published Buffer posts (sent + real metrics) as
+// `measured` drafts, then score + promote the top performers to golden examples —
+// seeding the learning loop with months of real engagement. Powers the Settings
+// → Import History tab. Body: { profiles: string[], dryRun?: boolean }.
+//
+// Runs synchronously and returns the full summary so the UI can show real counts.
+// A dry run only fetches + de-dups + counts (no writes). For very large tenants
+// (many hundreds of posts) prefer the CLI (scripts/import-buffer-history.mjs),
+// which has no 30s Worker CPU limit; the import is idempotent, so a timed-out run
+// can simply be re-run to completion.
+
+const IMPORT_CHANNELS = new Set(['linkedin', 'x', 'twitter', 'instagram', 'facebook', 'tiktok', 'pinterest']);
+
+api.post('/import/buffer-history', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const body = await c.req.json<Record<string, any>>().catch(() => null);
+  // Accept `profiles` (task spec) or `channels`; default to LinkedIn.
+  const raw = Array.isArray(body?.profiles)
+    ? body.profiles
+    : Array.isArray(body?.channels)
+      ? body.channels
+      : ['linkedin'];
+  const profiles = [...new Set(raw.map((s: unknown) => String(s).toLowerCase().trim()).filter(Boolean))];
+  if (profiles.length === 0) return err(c, 422, 'bad_input', 'profiles must be a non-empty array');
+  const badChannel = profiles.find((p) => !IMPORT_CHANNELS.has(p));
+  if (badChannel) return err(c, 422, 'bad_channel', `Unsupported channel: ${badChannel}`);
+  const dryRun = body?.dryRun === true;
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const env = c.env as unknown as MetricsEnv;
+  try {
+    const summary = await importBufferHistory({ db, env, tenantId, channels: profiles, dryRun });
+    return c.json({
+      fetched: summary.fetched,
+      imported: summary.imported,
+      skipped: summary.skipped,
+      scored: summary.scored,
+      goldenExamples: summary.goldenExamples,
+      dryRun: summary.dryRun,
+      channels: summary.channels,
+      topPerformers: summary.topPerformers,
+    });
+  } catch (e) {
+    return err(c, 500, 'import_failed', (e as Error).message);
   }
 });

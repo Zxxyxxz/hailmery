@@ -36,6 +36,27 @@ export interface BufferCredentials extends AdapterCredentials {
   };
 }
 
+/**
+ * A historical (already-sent) Buffer post, normalised for the importer
+ * (src/jobs/import-buffer.ts). `metrics` is mapped onto hailmery's MetricsResult
+ * exactly like fetchMetrics; `rawMetrics` keeps every Buffer metric by type
+ * (incl. engagementRate) for reference / debugging.
+ */
+export interface BufferHistoricalPost {
+  id: string;
+  text: string;
+  status: string;
+  sentAt: string | null;
+  serviceType: string;
+  channelId: string;
+  // The post's public permalink. The publish pipeline stores this (not the post
+  // id) as published_ref when Buffer returns it at publish time, so the importer
+  // dedups on it too — see src/jobs/import-buffer.ts.
+  externalLink: string | null;
+  metrics: MetricsResult;
+  rawMetrics: Record<string, number>;
+}
+
 // createPost is a single mutation across all of Buffer's channels. The payload
 // is a union: PostActionSuccess, or one of several error types that all
 // implement the MutationError interface (so a single `message` selection on the
@@ -94,10 +115,88 @@ interface PostMetricsResponse {
   errors?: Array<{ message: string; extensions?: { code?: string } }>;
 }
 
+// Historical-post listing (src/jobs/import-buffer.ts). `posts(input: PostsInput!)`
+// REQUIRES organizationId, which we resolve from the channel first (CHANNEL_ORG),
+// then filter by channelIds + status and paginate the PostsResults connection.
+// Each node carries the same `metrics { type value }` list as Query.post, so the
+// import reuses mapBufferMetrics(). Verified live: 110 sent LinkedIn posts for
+// APIRE (org 683c9b5a…dafab), every one with metrics. NOTE: this query shape is
+// undocumented in Buffer's public API docs — it was discovered by GraphQL schema
+// introspection (PostsInput → { organizationId!, filter: PostsFiltersInput, sort },
+// PostsFiltersInput → { channelIds, status: PostStatus(sent|scheduled|…) }).
+const CHANNEL_ORG = `query GetChannelOrg($input: ChannelInput!) {
+  channel(input: $input) { id organizationId service }
+}`;
+
+const LIST_POSTS = `query ListPosts($input: PostsInput!, $first: Int, $after: String) {
+  posts(input: $input, first: $first, after: $after) {
+    edges {
+      cursor
+      node {
+        id status text sentAt dueAt createdAt
+        channelId channelService externalLink
+        metrics { type value }
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+interface ChannelOrgResponse {
+  data?: { channel?: { id: string; organizationId?: string | null; service?: string } | null };
+  errors?: Array<{ message: string }>;
+}
+
+interface ListPostsNode {
+  id: string;
+  status: string;
+  text?: string | null;
+  sentAt?: string | null;
+  dueAt?: string | null;
+  createdAt?: string | null;
+  channelId?: string;
+  channelService?: string;
+  externalLink?: string | null;
+  metrics?: Array<{ type: string; value: number }> | null;
+}
+
+interface ListPostsResponse {
+  data?: {
+    posts?: {
+      edges: Array<{ cursor: string; node: ListPostsNode }>;
+      pageInfo: { hasNextPage: boolean; endCursor?: string | null };
+    } | null;
+  };
+  errors?: Array<{ message: string; extensions?: { code?: string } }>;
+}
+
 // A draft id is a UUID; a Buffer post id is a 24-char hex (Mongo ObjectId). When
 // the publish pipeline recorded no published_ref it falls back to the draft id —
 // there is no Buffer post to query in that case, so we skip the call.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Map Buffer's per-network metric `type`s onto hailmery's MetricsResult. Each
+ * network only emits one alias per concept (LinkedIn `reactions`, X `likes`), so
+ * summing aliases never double-counts. `engagementRate` (a percentage) is
+ * intentionally excluded — engagement is a raw interaction COUNT. Shared by
+ * fetchMetrics() (live polling) and listHistoricalPosts() (bulk import).
+ */
+function mapBufferMetrics(
+  metrics: Array<{ type: string; value: number }> | null | undefined,
+): MetricsResult {
+  const byType: Record<string, number> = {};
+  for (const m of metrics ?? []) byType[m.type] = (byType[m.type] ?? 0) + (Number(m.value) || 0);
+  const sum = (...keys: string[]) => keys.reduce((acc, k) => acc + (byType[k] ?? 0), 0);
+  const impressions = Math.round(byType.impressions ?? byType.reach ?? 0);
+  const clicks = Math.round(sum('clicks', 'linkClicks', 'postClicks', 'urlClicks'));
+  const engagement = Math.round(
+    sum('reactions', 'likes', 'favorites') +
+      sum('comments', 'replies') +
+      sum('shares', 'retweets', 'reposts'),
+  );
+  return { impressions, clicks, engagement, attributedLeads: 0 };
+}
 
 export class BufferAdapter implements ChannelAdapter {
   readonly platform = 'buffer';
@@ -227,23 +326,94 @@ export class BufferAdapter implements ChannelAdapter {
       return EMPTY_METRICS;
     }
 
-    // Map Buffer's per-network metric `type`s onto hailmery's MetricsResult. Each
-    // network only emits one alias per concept (LinkedIn `reactions`, X `likes`),
-    // so summing aliases never double-counts. `engagementRate` (a percentage) is
-    // intentionally excluded — engagement is a raw interaction COUNT here.
-    const byType: Record<string, number> = {};
-    for (const m of post.metrics) byType[m.type] = (byType[m.type] ?? 0) + (Number(m.value) || 0);
-    const sum = (...keys: string[]) => keys.reduce((acc, k) => acc + (byType[k] ?? 0), 0);
+    // Map Buffer's per-network metric `type`s onto hailmery's MetricsResult
+    // (shared with the historical importer).
+    return mapBufferMetrics(post.metrics);
+  }
 
-    const impressions = Math.round(byType.impressions ?? byType.reach ?? 0);
-    const clicks = Math.round(sum('clicks', 'linkClicks', 'postClicks', 'urlClicks'));
-    const engagement = Math.round(
-      sum('reactions', 'likes', 'favorites') +
-        sum('comments', 'replies') +
-        sum('shares', 'retweets', 'reposts'),
-    );
+  /**
+   * List a channel's historical posts for the importer. Buffer's GraphQL
+   * `posts(input: PostsInput!)` requires the channel's organizationId, so we
+   * resolve that from the channel first, then paginate. Defaults to status
+   * 'sent' (already-published posts that carry real engagement metrics).
+   * Throws on transport/GraphQL errors so the importer can surface them — unlike
+   * fetchMetrics(), which degrades to empty because the metrics queue must drain.
+   */
+  async listHistoricalPosts(
+    channelId: string,
+    opts: { status?: string; pageSize?: number; maxPages?: number } = {},
+  ): Promise<BufferHistoricalPost[]> {
+    if (!channelId) throw new Error('listHistoricalPosts: channelId required');
+    const status = opts.status ?? 'sent';
+    const pageSize = Math.min(Math.max(opts.pageSize ?? 100, 1), 100);
+    const maxPages = opts.maxPages ?? 200;
 
-    return { impressions, clicks, engagement, attributedLeads: 0 };
+    // 1) Resolve organizationId — PostsInput.organizationId is required.
+    const orgBody = await this.graphql<ChannelOrgResponse>(CHANNEL_ORG, {
+      input: { id: channelId },
+    });
+    const organizationId = orgBody.data?.channel?.organizationId ?? null;
+    if (!organizationId) {
+      throw new Error(`Buffer: could not resolve organizationId for channel ${channelId}`);
+    }
+
+    // 2) Paginate the channel's posts at the requested status.
+    const out: BufferHistoricalPost[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < maxPages; page++) {
+      // Explicit annotation breaks a control-flow inference cycle: `after` is
+      // reassigned below from `conn` (← body), and is also an argument here.
+      const body: ListPostsResponse = await this.graphql<ListPostsResponse>(LIST_POSTS, {
+        input: { organizationId, filter: { channelIds: [channelId], status } },
+        first: pageSize,
+        after,
+      });
+      const conn = body.data?.posts;
+      if (!conn) break;
+      for (const edge of conn.edges ?? []) {
+        const n = edge.node;
+        const rawMetrics: Record<string, number> = {};
+        for (const m of n.metrics ?? []) rawMetrics[m.type] = Number(m.value) || 0;
+        out.push({
+          id: n.id,
+          text: typeof n.text === 'string' ? n.text : '',
+          status: n.status,
+          // sentAt is the canonical publish time for a sent post; fall back
+          // defensively so a draft/scheduled post still carries a timestamp.
+          sentAt: n.sentAt ?? n.dueAt ?? n.createdAt ?? null,
+          serviceType: n.channelService ?? '',
+          channelId: n.channelId ?? channelId,
+          externalLink: n.externalLink ?? null,
+          metrics: mapBufferMetrics(n.metrics),
+          rawMetrics,
+        });
+      }
+      if (!conn.pageInfo?.hasNextPage) break;
+      after = conn.pageInfo.endCursor ?? null;
+      if (!after) break;
+    }
+    return out;
+  }
+
+  /** POST a GraphQL query; throw on transport or GraphQL-level errors. */
+  private async graphql<T extends { errors?: Array<{ message: string }> }>(
+    query: string,
+    variables: Record<string, unknown>,
+  ): Promise<T> {
+    const res = await fetch(GRAPHQL_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const body = (await res.json().catch(() => null)) as T | null;
+    if (!body) throw new Error(`Buffer GraphQL: empty/non-JSON response (HTTP ${res.status})`);
+    if (body.errors?.length) {
+      throw new Error(`Buffer GraphQL error: ${JSON.stringify(body.errors).slice(0, 400)}`);
+    }
+    return body;
   }
 
   async quotaState(): Promise<QuotaState> {

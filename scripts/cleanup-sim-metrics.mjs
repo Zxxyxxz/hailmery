@@ -8,12 +8,13 @@
 // remains (SendGrid email opens/clicks; Buffer social metrics once wired).
 //
 // WHAT COUNTS AS FAKE (verified against production on 2026-06-11):
-//   • Every window='7d' content_metrics row. sim-metrics is the ONLY writer of
-//     '7d' rows (Umami, the only other '7d' source, is not connected), and they
-//     all carry inflated round numbers (impressions 180-489) fetched in the
-//     single sim run. This includes 2 rows on the EMAIL channel — kept by a
-//     naive "keep all email" rule, but they corrupt the email averages because
-//     /api/analytics/summary takes MAX(impressions) across a draft's windows.
+//   • Every window='7d' content_metrics row EXCEPT the historical Buffer import's
+//     (drafts tagged payload.imported_from='buffer_history', added Session 7 —
+//     those carry REAL engagement and are explicitly preserved by STEP 1a). The
+//     fabricated sim rows carry inflated round numbers (impressions 180-489)
+//     fetched in the single sim run. This includes 2 rows on the EMAIL channel —
+//     kept by a naive "keep all email" rule, but they corrupt the email averages
+//     because /api/analytics/summary takes MAX(impressions) across a draft's windows.
 //   • Non-email content_metrics that are ALL-ZERO (impressions/clicks/engagement
 //     /attributed_leads all 0) — EMPTY_METRICS stubs written by
 //     processMetricsQueue against adapters with no real fetch. STEP 1b is scoped
@@ -80,7 +81,10 @@ async function main() {
     console.log(`──────── tenant ${tid} ────────`);
     await reportMetrics(db, tid, 'before');
 
-    // STEP 1a — delete the fabricated window='7d' rows (all channels).
+    // STEP 1a — delete the fabricated window='7d' rows (all channels), EXCEPT
+    // the historical Buffer import's rows. import-buffer.ts is now a legitimate
+    // '7d' writer of REAL engagement (drafts tagged payload.imported_from =
+    // 'buffer_history'); those must be preserved, so they are excluded here.
     const del7d = await withTenantDb(db, tid, async (tx) =>
       rows(await tx.execute(sql`
         DELETE FROM marketing.content_metrics cm
@@ -88,6 +92,7 @@ async function main() {
         WHERE cm.tenant_id = ${tid}
           AND cd.id = cm.draft_id AND cd.tenant_id = ${tid}
           AND cm."window" = '7d'
+          AND cd.payload->>'imported_from' IS DISTINCT FROM 'buffer_history'
         RETURNING cd.channel AS channel
       `)),
     );
