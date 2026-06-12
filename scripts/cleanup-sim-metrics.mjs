@@ -102,6 +102,10 @@ async function main() {
 
     // STEP 1b — delete non-email ALL-ZERO stub rows only. The all-zero predicate
     // guarantees a real Buffer social metric (any non-zero field) is preserved.
+    // Historical Buffer imports are also preserved: a definitively-measured 0
+    // (a real post that genuinely got no engagement — e.g. ~51 of OSM's 240
+    // LinkedIn posts) is honest data, not a fetch-failure stub, so the
+    // imported_from guard keeps it like STEP 1a does for the import's 7d rows.
     const delStub = await withTenantDb(db, tid, async (tx) =>
       rows(await tx.execute(sql`
         DELETE FROM marketing.content_metrics cm
@@ -111,6 +115,7 @@ async function main() {
           AND cd.channel <> 'email'
           AND cm.impressions = 0 AND cm.clicks = 0 AND cm.engagement = 0
           AND COALESCE(cm.attributed_leads, 0) = 0
+          AND cd.payload->>'imported_from' IS DISTINCT FROM 'buffer_history'
         RETURNING cd.channel AS channel
       `)),
     );
