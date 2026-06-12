@@ -20,6 +20,7 @@ import {
 import { runGenerationPipeline } from '../workflows/generation.js';
 import { runPublishPipeline } from '../workflows/publish.js';
 import { runNightlyMetrics, type MetricsEnv } from './metrics.js';
+import { runRecommendationsTick } from './recommendations.js';
 import type { PipelineEnv, GenerationParams } from '../workflows/types.js';
 
 const QUEUE_TARGET = 5;
@@ -110,13 +111,21 @@ export async function runGenerationTick(env: SchedulerEnv): Promise<void> {
 // ── 0 3 — nightly tick ──────────────────────────────────────────────
 // Mail sync first (HubSpot → SendGrid), then the metrics ingestion + learning
 // loop (drain metrics_queue, GSC + Umami sync, performance scoring, golden-
-// example tagging). Each is isolated so a failure in one never blocks the other.
+// example tagging), then the recommendations engine. Each is isolated so a
+// failure in one never blocks the others. Recommendations runs LAST because it
+// reasons over the content_metrics / performance_score / golden_example that the
+// metrics pass writes in this same tick — running it earlier would read stale data.
 export async function runNightlyTick(env: SchedulerEnv): Promise<void> {
   await runMailSync(env);
   try {
     await runNightlyMetrics(env);
   } catch (err) {
     console.error('[scheduler] nightly metrics job failed:', err instanceof Error ? err.message : err);
+  }
+  try {
+    await runRecommendationsTick(env);
+  } catch (err) {
+    console.error('[scheduler] nightly recommendations job failed:', err instanceof Error ? err.message : err);
   }
 }
 

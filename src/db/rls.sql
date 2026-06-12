@@ -119,6 +119,56 @@ EXCEPTION
   WHEN duplicate_table THEN NULL;
 END $$;
 
+-- 1f. Weekly recommendations engine (Session 8 — src/jobs/recommendations.ts).
+--     Idempotent + placed BEFORE the RLS enable/policy loops so the new table
+--     automatically picks up the uniform tenant_isolation policy. Drizzle's
+--     schema.ts stays the source of truth + types; this mirrors the diff for the
+--     migrate path (pnpm db:migrate applies rls.sql; it does NOT run drizzle-kit).
+DO $$ BEGIN
+  CREATE TYPE marketing.recommendation_type AS ENUM (
+    'content_gap', 'channel_rebalance', 'trending_opportunity',
+    'queue_health', 'engagement_followup'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE marketing.recommendation_action_type AS ENUM (
+    'generate', 'approve', 'review_queue'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE marketing.recommendation_status AS ENUM (
+    'pending', 'actioned', 'dismissed'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS marketing.recommendations (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      uuid NOT NULL,
+  type           marketing.recommendation_type NOT NULL,
+  title          text NOT NULL,
+  description    text NOT NULL,
+  reasoning      text NOT NULL,
+  action_type    marketing.recommendation_action_type NOT NULL,
+  action_params  jsonb NOT NULL DEFAULT '{}'::jsonb,
+  priority_score integer NOT NULL DEFAULT 5,
+  data_snapshot  jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status         marketing.recommendation_status NOT NULL DEFAULT 'pending',
+  week_of        date NOT NULL,
+  expires_at     timestamptz NOT NULL,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS recommendations_tenant_idx
+  ON marketing.recommendations (tenant_id);
+CREATE INDEX IF NOT EXISTS recommendations_status_idx
+  ON marketing.recommendations (tenant_id, status);
+CREATE INDEX IF NOT EXISTS recommendations_week_idx
+  ON marketing.recommendations (tenant_id, week_of);
+
 -- 2. HNSW index for fast cosine ANN on document_chunks.embedding.
 --    Cosine is what text-embedding-3-small ships normalized for.
 --    Only run if the table actually exists (lets us call this migration

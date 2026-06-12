@@ -225,6 +225,43 @@ export interface GenerateNowInput {
   generateImage?: boolean
 }
 
+// ── Recommendations ─────────────────────────────────────────────────
+
+export type RecommendationType =
+  | 'content_gap'
+  | 'channel_rebalance'
+  | 'trending_opportunity'
+  | 'queue_health'
+  | 'engagement_followup'
+
+export type RecommendationActionType = 'generate' | 'approve' | 'review_queue'
+
+export type RecommendationStatus = 'pending' | 'actioned' | 'dismissed'
+
+export interface RecommendationActionParams {
+  topic?: string | null
+  channel?: string
+  campaign_id?: string | null
+  draft_ids?: string[]
+  [key: string]: unknown
+}
+
+export interface Recommendation {
+  id: string
+  type: RecommendationType
+  title: string
+  description: string
+  reasoning: string
+  actionType: RecommendationActionType
+  actionParams: RecommendationActionParams
+  priorityScore: number
+  dataSnapshot: Record<string, unknown>
+  status: RecommendationStatus
+  weekOf: string
+  expiresAt: string
+  createdAt: string
+}
+
 // ── Analytics ───────────────────────────────────────────────────────
 
 export interface PublishedByDay {

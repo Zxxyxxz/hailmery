@@ -87,6 +87,26 @@ export const intelligenceBriefStatus = marketing.enum('intelligence_brief_status
   'used',
 ]);
 
+export const recommendationType = marketing.enum('recommendation_type', [
+  'content_gap',
+  'channel_rebalance',
+  'trending_opportunity',
+  'queue_health',
+  'engagement_followup',
+]);
+
+export const recommendationActionType = marketing.enum('recommendation_action_type', [
+  'generate',
+  'approve',
+  'review_queue',
+]);
+
+export const recommendationStatus = marketing.enum('recommendation_status', [
+  'pending',
+  'actioned',
+  'dismissed',
+]);
+
 // ──────────────────────────────────────────────────────────────────
 // Tables — every table starts with `tenant_id` and has RLS applied
 // in src/db/rls.sql.
@@ -386,6 +406,37 @@ export const intelligenceBriefs = marketing.table('intelligence_briefs', {
   weekUq: uniqueIndex('intelligence_briefs_tenant_week_uq').on(t.tenantId, t.weekOf),
 }));
 
+// Weekly recommendations — the nightly job (src/jobs/recommendations.ts) reasons
+// over all real data sources (content_metrics, content_drafts, publish cadence,
+// the latest intelligence brief, campaigns) with Sonnet 4.6 and writes up to 5
+// ranked, data-backed actions per tenant per week. The dashboard surfaces them as
+// the "This week's recommendations" panel and Baran actions each with one click.
+// status tracks operator follow-through (pending → actioned | dismissed).
+export const recommendations = marketing.table('recommendations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  type: recommendationType('type').notNull(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  // The specific data point(s) behind the recommendation (1-2 sentences).
+  reasoning: text('reasoning').notNull(),
+  actionType: recommendationActionType('action_type').notNull(),
+  // Everything needed to execute the action: { topic, channel, campaign_id, draft_ids[] }.
+  actionParams: jsonb('action_params').notNull().default({}),
+  // 1-10, higher = more urgent. The panel sorts + colour-codes by this.
+  priorityScore: integer('priority_score').notNull().default(5),
+  // The raw numbers that drove this recommendation (audit trail + UI "Why?").
+  dataSnapshot: jsonb('data_snapshot').notNull().default({}),
+  status: recommendationStatus('status').notNull().default('pending'),
+  weekOf: date('week_of').notNull(), // Monday (UTC) of the recommendation week.
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  tenantIdx: index('recommendations_tenant_idx').on(t.tenantId),
+  statusIdx: index('recommendations_status_idx').on(t.tenantId, t.status),
+  weekIdx: index('recommendations_week_idx').on(t.tenantId, t.weekOf),
+}));
+
 // ──────────────────────────────────────────────────────────────────
 // Type exports for downstream code
 // ──────────────────────────────────────────────────────────────────
@@ -406,3 +457,4 @@ export type Asset = typeof assets.$inferSelect;
 export type MetricsQueueEntry = typeof metricsQueue.$inferSelect;
 export type IntelligenceBrief = typeof intelligenceBriefs.$inferSelect;
 export type GscKeyword = typeof gscKeywords.$inferSelect;
+export type Recommendation = typeof recommendations.$inferSelect;

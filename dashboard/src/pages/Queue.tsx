@@ -12,11 +12,16 @@ import {
   useGenerate,
   useGenerateNow,
   useQueueStatus,
+  useUpdateRecommendation,
 } from '@/lib/queries'
 import { useTenant } from '@/lib/tenant-context'
 import { toApiError } from '@/lib/api'
 import type { Campaign, DraftStatus, GenerateNowResult } from '@/lib/types'
 import { DraftCard } from '@/components/DraftCard'
+import {
+  RecommendationsPanel,
+  type RecommendationGenerateInput,
+} from '@/components/RecommendationsPanel'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -69,11 +74,17 @@ export default function Queue() {
 
   const [toast, setToast] = useState<ToastState | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  // When the Create-now modal is opened from a recommendation, this carries the
+  // pre-fill (topic/channel/campaign) + the originating rec id so we can mark it
+  // actioned once a draft is actually produced.
+  const [prefill, setPrefill] = useState<RecommendationGenerateInput | null>(null)
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const [pollingUntil, setPollingUntil] = useState(0)
   const [tab, setTab] = useState('pending')
   const [sort, setSort] = useState<SortKey>('newest')
   const isPolling = pollingUntil > Date.now()
+  const updateRec = useUpdateRecommendation()
+  const queueListRef = useRef<HTMLDivElement>(null)
 
   const activeTab = QUEUE_TABS.find((t) => t.key === tab) ?? QUEUE_TABS[0]
 
@@ -159,12 +170,37 @@ export default function Queue() {
     setCreateOpen(false)
     setHighlightId(res.draftId)
     startPolling()
+    // Close the loop: a draft produced from a recommendation marks it actioned.
+    if (prefill?.recId) {
+      updateRec.mutate({ id: prefill.recId, status: 'actioned' })
+    }
+    setPrefill(null)
     setToast({
       message: res.imageGenerated
         ? `New ${channelLabel} draft added — with image`
         : `New ${channelLabel} draft added to queue`,
       variant: 'success',
     })
+  }
+
+  // A recommendation's "Generate now" pre-fills + opens the Create-now modal.
+  function handleRecGenerate(input: RecommendationGenerateInput) {
+    setPrefill(input)
+    setCreateOpen(true)
+  }
+
+  // An "approve" / "review_queue" recommendation jumps to the pending list.
+  function handleReviewQueue() {
+    setTab('pending')
+    setTimeout(
+      () => queueListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      60,
+    )
+  }
+
+  function closeCreate() {
+    setCreateOpen(false)
+    setPrefill(null)
   }
 
   return (
@@ -198,6 +234,9 @@ export default function Queue() {
         </div>
       </header>
 
+      {/* AI recommendations — the "tells me what to do" layer, above the queue. */}
+      <RecommendationsPanel onGenerate={handleRecGenerate} onReviewQueue={handleReviewQueue} />
+
       {/* Stats bar */}
       {stats && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -210,7 +249,7 @@ export default function Queue() {
       )}
 
       {/* Filter tabs + sort */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div ref={queueListRef} className="flex flex-wrap items-center justify-between gap-3">
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
             {QUEUE_TABS.map((t) => (
@@ -287,9 +326,13 @@ export default function Queue() {
 
       <CreateNowModal
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={closeCreate}
         campaigns={campaigns ?? []}
         defaultCampaignId={evergreenId}
+        initialTopic={prefill?.topic}
+        initialChannel={prefill?.channel}
+        initialCampaignId={prefill?.campaignId ?? null}
+        fromRecommendation={!!prefill}
         onCreated={handleCreated}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
@@ -304,12 +347,21 @@ function CreateNowModal({
   onClose,
   campaigns,
   defaultCampaignId,
+  initialTopic,
+  initialChannel,
+  initialCampaignId,
+  fromRecommendation = false,
   onCreated,
 }: {
   open: boolean
   onClose: () => void
   campaigns: Campaign[]
   defaultCampaignId: string | null
+  /** Pre-fill values when opened from a recommendation (else blank defaults). */
+  initialTopic?: string
+  initialChannel?: string
+  initialCampaignId?: string | null
+  fromRecommendation?: boolean
   onCreated: (res: GenerateNowResult, channelLabel: string) => void
 }) {
   const generateNow = useGenerateNow()
@@ -319,14 +371,20 @@ function CreateNowModal({
   const [toneOverride, setToneOverride] = useState('')
   const [generateImage, setGenerateImage] = useState(true)
 
-  // Seed the campaign select with the evergreen default whenever the modal opens.
+  // Seed the form whenever the modal opens. When opened from a recommendation,
+  // pre-fill topic/channel/campaign from it; otherwise fall back to blank inputs
+  // and the evergreen campaign default. Re-seeds when the initial values change
+  // so opening from a different recommendation refreshes the fields.
   useEffect(() => {
     if (open) {
-      setCampaignId(defaultCampaignId ?? '')
+      setTopic(initialTopic ?? '')
+      setChannel(initialChannel ?? 'linkedin')
+      setCampaignId(initialCampaignId ?? defaultCampaignId ?? '')
+      setToneOverride('')
       generateNow.reset()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultCampaignId])
+  }, [open, initialTopic, initialChannel, initialCampaignId, defaultCampaignId])
 
   const channelLabel =
     CHANNEL_OPTIONS.find((o) => o.key === channel)?.label ?? channel
@@ -362,6 +420,12 @@ function CreateNowModal({
       description="Generate a single draft from a topic — it lands in the review queue."
     >
       <div className="space-y-4 p-6 pt-2">
+        {fromRecommendation && (
+          <div className="flex items-center gap-2 rounded-lg border border-violet-500/20 bg-violet-500/[0.06] px-3 py-2 text-xs text-violet-300">
+            <Sparkles className="h-3.5 w-3.5 shrink-0" />
+            Pre-filled from this week&rsquo;s recommendation — review and generate.
+          </div>
+        )}
         <div>
           <Label>Topic</Label>
           <Textarea

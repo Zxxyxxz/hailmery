@@ -18,6 +18,7 @@ import { runGenerationPipeline } from '../workflows/generation.js';
 import { publishSingleDraft } from '../workflows/publish.js';
 import type { PipelineEnv, GenerationParams, TriggerReason } from '../workflows/types.js';
 import { generateWeeklyIntelligenceBrief } from '../jobs/intelligence.js';
+import { generateRecommendations } from '../jobs/recommendations.js';
 import { importBufferHistory } from '../jobs/import-buffer.js';
 import type { MetricsEnv } from '../jobs/metrics.js';
 import { generateSocial, SOCIAL_CHANNELS } from '../generation/social.js';
@@ -1153,6 +1154,118 @@ api.post('/intelligence/refresh', async (c) => {
   } catch (e) {
     return err(c, 500, 'intelligence_failed', (e as Error).message);
   }
+});
+
+// ── Recommendations ─────────────────────────────────────────────────
+// The "tells me what to do" layer. The nightly job (src/jobs/recommendations.ts)
+// writes up to 5 ranked, data-backed actions per tenant per week; these routes
+// surface this week's pending set, let the dashboard refresh on demand (awaits a
+// live Sonnet call, ~5-10s), and mark a recommendation actioned/dismissed.
+
+function normalizeRecommendation(r: Row) {
+  return {
+    id: r.id,
+    type: r.type,
+    title: r.title,
+    description: r.description,
+    reasoning: r.reasoning,
+    actionType: r.action_type,
+    actionParams: (r.action_params ?? {}) as Record<string, unknown>,
+    priorityScore: Number(r.priority_score ?? 5),
+    dataSnapshot: (r.data_snapshot ?? {}) as Record<string, unknown>,
+    status: r.status,
+    weekOf: r.week_of,
+    expiresAt: r.expires_at,
+    createdAt: r.created_at,
+  };
+}
+
+const RECOMMENDATION_STATUSES = new Set(['pending', 'actioned', 'dismissed']);
+
+// GET /api/recommendations — this week's pending, non-expired set (top 5 by priority).
+api.get('/recommendations', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const rows = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT id, type, title, description, reasoning, action_type, action_params,
+             priority_score, data_snapshot, status, week_of, expires_at, created_at
+      FROM marketing.recommendations
+      WHERE tenant_id = ${tenantId}
+        AND status = 'pending'
+        AND expires_at >= now()
+      ORDER BY priority_score DESC, created_at ASC
+      LIMIT 5
+    `);
+    return r.rows;
+  });
+
+  return c.json({ recommendations: rows.map(normalizeRecommendation) });
+});
+
+// POST /api/recommendations/refresh — re-run the engine for this tenant now.
+api.post('/recommendations/refresh', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+  try {
+    const result = await generateRecommendations({ db, tenantId });
+    if (result.skipped) {
+      return c.json({ recommendations: [], skipped: true, reason: result.reason ?? 'insufficient_data' });
+    }
+    const rows = await withTenantDb(db, tenantId, async (tx) => {
+      const r = await tx.execute<Row>(sql`
+        SELECT id, type, title, description, reasoning, action_type, action_params,
+               priority_score, data_snapshot, status, week_of, expires_at, created_at
+        FROM marketing.recommendations
+        WHERE tenant_id = ${tenantId}
+          AND status = 'pending'
+          AND expires_at >= now()
+        ORDER BY priority_score DESC, created_at ASC
+        LIMIT 5
+      `);
+      return r.rows;
+    });
+    return c.json({ recommendations: rows.map(normalizeRecommendation), skipped: false });
+  } catch (e) {
+    return err(c, 500, 'recommendations_failed', (e as Error).message);
+  }
+});
+
+// PATCH /api/recommendations/:id — mark actioned | dismissed.
+api.patch('/recommendations/:id', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const id = c.req.param('id');
+  try {
+    assertUuid(id, 'id');
+  } catch {
+    return err(c, 422, 'bad_id', 'recommendation id must be a UUID');
+  }
+
+  const body = await c.req.json<Record<string, any>>().catch(() => null);
+  const status = typeof body?.status === 'string' ? body.status : '';
+  if (!RECOMMENDATION_STATUSES.has(status)) {
+    return err(c, 422, 'bad_status', 'status must be pending, actioned, or dismissed');
+  }
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const updated = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      UPDATE marketing.recommendations
+      SET status = ${status}::marketing.recommendation_status
+      WHERE id = ${id} AND tenant_id = ${tenantId}
+      RETURNING id
+    `);
+    return r.rows[0] ?? null;
+  });
+  if (!updated) return err(c, 404, 'not_found', 'recommendation not found');
+
+  return c.json({ ok: true, id, status });
 });
 
 // ── Analytics ───────────────────────────────────────────────────────

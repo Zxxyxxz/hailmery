@@ -21,6 +21,8 @@ import type {
   PlatformConnection,
   PublishNowResult,
   QueueStatus,
+  Recommendation,
+  RecommendationStatus,
   SiteConfigResponse,
   TopContentResponse,
   UploadResult,
@@ -342,6 +344,61 @@ export function useGenerateNow() {
       qc.invalidateQueries({ queryKey: ['drafts', currentId] })
       qc.invalidateQueries({ queryKey: ['queue-status', currentId] })
     },
+  })
+}
+
+// ── Recommendations ─────────────────────────────────────────────────
+
+/** This week's pending recommendations (top 5 by priority). */
+export function useRecommendations() {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['recommendations', currentId],
+    enabled: !!currentId,
+    staleTime: 1000 * 60 * 5, // 5 min — the set only changes nightly or on refresh
+    queryFn: async () => {
+      const res = await api.get<{ recommendations: Recommendation[] }>(
+        '/api/recommendations',
+      )
+      return res.data.recommendations
+    },
+  })
+}
+
+/**
+ * Re-runs the engine for this tenant on demand (the panel's Refresh button).
+ * Awaits a live Sonnet call (~35-40s). The work commits server-side even if the
+ * response is slow to flush, so we invalidate on BOTH success and error so the
+ * panel always reconciles with what actually landed.
+ */
+export function useRefreshRecommendations() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{ recommendations: Recommendation[]; skipped?: boolean }>(
+        '/api/recommendations/refresh',
+      )
+      return res.data
+    },
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: ['recommendations', currentId] }),
+  })
+}
+
+/** Mark a recommendation actioned or dismissed. */
+export function useUpdateRecommendation() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: RecommendationStatus }) => {
+      const res = await api.patch<{ ok: boolean }>(`/api/recommendations/${id}`, {
+        status,
+      })
+      return res.data
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['recommendations', currentId] }),
   })
 }
 
