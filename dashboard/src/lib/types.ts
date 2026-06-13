@@ -153,10 +153,53 @@ export interface SiteConfigResponse {
 }
 
 export interface PlatformConnection {
+  /** platform id — matches PlatformDef.id (e.g. 'buffer', 'hubspot'). */
   platform: string
   connected: boolean
   account: string | null
+  /** ISO time of the last successful live validation, or null when uncertain. */
+  lastValidated: string | null
   lastSyncAt: string | null
+  connectionType: 'api_key' | 'oauth' | 'managed'
+  canConnect: boolean
+  // SendGrid only — sending-domain authentication status.
+  domain?: string | null
+  domainRegistered?: boolean
+  domainVerified?: boolean
+}
+
+/** Response from POST /api/connections/:platform/connect. */
+export interface ConnectResult {
+  ok: boolean
+  account: string | null
+  message: string
+}
+
+export interface DomainAuthRecord {
+  type: string
+  name: string
+  value: string
+  valid?: boolean
+}
+
+/** Response from GET /api/connections/sendgrid/domain-auth. */
+export interface DomainAuth {
+  domain: string
+  id: number | null
+  registered: boolean
+  verified: boolean
+  records: {
+    mail: DomainAuthRecord | null
+    dkim1: DomainAuthRecord | null
+    dkim2: DomainAuthRecord | null
+  }
+}
+
+/** Response from POST /api/connections/sendgrid/verify-domain. */
+export interface VerifyDomainResult {
+  domain: string
+  valid: boolean
+  validationResults: unknown
 }
 
 export interface DocumentRow {

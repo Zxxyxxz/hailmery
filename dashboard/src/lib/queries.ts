@@ -10,8 +10,10 @@ import type {
   BufferImportInput,
   BufferImportResult,
   Campaign,
+  ConnectResult,
   CreateCampaignInput,
   DocumentRow,
+  DomainAuth,
   Draft,
   DraftStatus,
   GenerateNowInput,
@@ -26,6 +28,7 @@ import type {
   SiteConfigResponse,
   TopContentResponse,
   UploadResult,
+  VerifyDomainResult,
 } from './types'
 
 // ── Drafts ──────────────────────────────────────────────────────────
@@ -473,11 +476,92 @@ export function useConnections() {
   return useQuery({
     queryKey: ['connections', currentId],
     enabled: !!currentId,
+    // Validation hits live provider APIs and is cached 5 min server-side; keep
+    // the client cache in step so a tab switch doesn't re-fetch needlessly.
+    staleTime: 1000 * 60 * 5,
     queryFn: async () => {
       const res = await api.get<{ connections: PlatformConnection[] }>(
         '/api/connections',
       )
       return res.data.connections
+    },
+  })
+}
+
+/** Validate + store an API key for a platform (Buffer / HubSpot / SendGrid). */
+export function useConnectPlatform() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async ({
+      platform,
+      apiKey,
+      extra,
+    }: {
+      platform: string
+      apiKey: string
+      extra?: Record<string, unknown>
+    }) => {
+      const res = await api.post<ConnectResult>(
+        `/api/connections/${platform}/connect`,
+        { apiKey, ...(extra ?? {}) },
+      )
+      return res.data
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['connections', currentId] }),
+  })
+}
+
+/** Disconnect a platform (deletes the stored credential). Confirmed server-side. */
+export function useDisconnectPlatform() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async (platform: string) => {
+      const res = await api.post(`/api/connections/${platform}/disconnect`, {
+        confirm: true,
+      })
+      return res.data
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['connections', currentId] }),
+  })
+}
+
+/**
+ * SendGrid sending-domain CNAME records. Disabled by default — call refetch()
+ * when the domain-auth modal opens so we don't register a domain on page load.
+ */
+export function useDomainAuth() {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['domain-auth', currentId],
+    enabled: false,
+    gcTime: 0,
+    queryFn: async () => {
+      const res = await api.get<DomainAuth>(
+        '/api/connections/sendgrid/domain-auth',
+      )
+      return res.data
+    },
+  })
+}
+
+/** Ask SendGrid to re-check the sending domain's DNS now. */
+export function useVerifyDomain() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post<VerifyDomainResult>(
+        '/api/connections/sendgrid/verify-domain',
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['connections', currentId] })
+      qc.invalidateQueries({ queryKey: ['domain-auth', currentId] })
     },
   })
 }

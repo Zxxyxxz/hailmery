@@ -14,23 +14,42 @@ import {
   Sparkles,
   AlertTriangle,
   Check,
+  KeyRound,
+  Copy,
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  Lock,
 } from 'lucide-react'
 import { useTenant } from '@/lib/tenant-context'
 import { toApiError } from '@/lib/api'
 import {
   useCampaigns,
   useConnections,
+  useConnectPlatform,
   useDeleteDocument,
+  useDisconnectPlatform,
   useDocuments,
+  useDomainAuth,
   useImportBufferHistory,
   usePatchCampaign,
   usePatchSiteConfig,
   useReingestDocument,
   useSiteConfig,
   useUploadDocument,
+  useVerifyDomain,
 } from '@/lib/queries'
-import type { BrandVoice, BufferImportResult } from '@/lib/types'
+import type {
+  BrandVoice,
+  BufferImportResult,
+  DomainAuthRecord,
+  PlatformConnection,
+} from '@/lib/types'
 import { CHANNELS, SELECTABLE_CHANNELS } from '@/lib/channels'
+import { PLATFORMS, type PlatformDef } from '@/lib/platforms'
+import { formatTimeAgo } from '@/lib/format'
+import { Dialog } from '@/components/ui/dialog'
+import { Toast, type ToastState } from '@/components/ui/toast'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -177,42 +196,523 @@ function BrandVoiceTab() {
 
 // ── Tab 2 — Connected Platforms ─────────────────────────────────────
 
+// Example keys for the connect modal's input placeholder (shape only — not real).
+const KEY_PLACEHOLDER: Record<string, string> = {
+  buffer: '1/0123456789abcdef…',
+  hubspot: 'pat-na1-xxxxxxxx-xxxx-…',
+  sendgrid: 'SG.xxxxxxxxxxxxxxxxxxxxxx…',
+}
+
 function PlatformsTab() {
-  const { data, isLoading } = useConnections()
+  const { data: connections, isLoading } = useConnections()
+  const disconnect = useDisconnectPlatform()
+  const [connectId, setConnectId] = useState<string | null>(null)
+  const [domainOpen, setDomainOpen] = useState(false)
+  const [toast, setToast] = useState<ToastState | null>(null)
+
+  const byId = useMemo(
+    () => new Map((connections ?? []).map((c) => [c.platform, c])),
+    [connections],
+  )
+
   if (isLoading) return <Skeleton className="h-96 rounded-2xl" />
 
+  const connectDef = PLATFORMS.find((p) => p.id === connectId) ?? null
+  const sendgrid = byId.get('sendgrid')
+
   return (
-    <Card className="divide-y divide-white/[0.05] p-2">
-      {(data ?? []).map((c) => (
-        <div key={c.platform} className="flex items-center justify-between px-4 py-3.5">
-          <div className="flex items-center gap-3">
-            <span
-              className={`h-2.5 w-2.5 rounded-full ${c.connected ? 'bg-emerald-400' : 'bg-gray-600'}`}
-            />
-            <div>
-              <div className="text-sm font-medium text-gray-200">{c.platform}</div>
-              {c.connected ? (
-                <div className="text-xs text-gray-500">
-                  {c.account ?? 'Connected'}
-                  {c.lastSyncAt && ` · last sync ${new Date(c.lastSyncAt).toLocaleString()}`}
-                </div>
-              ) : (
-                <div className="text-xs text-gray-600">Not connected</div>
+    <div className="space-y-4">
+      <Card className="divide-y divide-white/[0.05] p-2">
+        {PLATFORMS.map((p) => (
+          <PlatformRow
+            key={p.id}
+            def={p}
+            status={byId.get(p.id)}
+            disconnecting={disconnect.isPending && disconnect.variables === p.id}
+            onConnect={() => setConnectId(p.id)}
+            onAuthDomain={() => setDomainOpen(true)}
+            onDisconnect={() =>
+              disconnect.mutate(p.id, {
+                onSuccess: () => setToast({ message: `${p.name} disconnected` }),
+                onError: (e) => setToast({ message: toApiError(e).error, variant: 'error' }),
+              })
+            }
+          />
+        ))}
+      </Card>
+
+      <p className="px-1 text-xs text-gray-600">
+        Keys are validated with a live call, then encrypted before storage — hailmery only ever keeps the encrypted value.
+      </p>
+
+      {connectDef && (
+        <ConnectModal
+          def={connectDef}
+          onClose={() => setConnectId(null)}
+          onConnected={(msg) => setToast({ message: msg })}
+        />
+      )}
+      {domainOpen && (
+        <DomainAuthModal
+          domain={sendgrid?.domain ?? null}
+          onClose={() => setDomainOpen(false)}
+          onToast={setToast}
+        />
+      )}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </div>
+  )
+}
+
+function PlatformRow({
+  def,
+  status,
+  disconnecting,
+  onConnect,
+  onAuthDomain,
+  onDisconnect,
+}: {
+  def: PlatformDef
+  status?: PlatformConnection
+  disconnecting: boolean
+  onConnect: () => void
+  onAuthDomain: () => void
+  onDisconnect: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const connected = !!status?.connected
+  const isSendgrid = def.id === 'sendgrid'
+  const domainOk = status?.domainVerified === true
+
+  return (
+    <div className="px-4 py-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className={`h-2.5 w-2.5 shrink-0 rounded-full ${connected ? 'bg-emerald-400' : 'bg-gray-600'}`}
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-200">{def.name}</span>
+              {!def.available && (
+                <Badge variant="gray" className="gap-1">
+                  <Lock className="h-3 w-3" /> Coming soon
+                </Badge>
               )}
             </div>
+            <div className="mt-0.5 text-xs">
+              {connected ? (
+                <span className="text-gray-500">
+                  Connected{status?.account ? ` · ${status.account}` : ''}
+                  {status?.lastValidated && (
+                    <span className="text-gray-600"> · validated {formatTimeAgo(status.lastValidated)}</span>
+                  )}
+                </span>
+              ) : def.available ? (
+                <span className="text-gray-600">Not connected</span>
+              ) : (
+                <span className="text-gray-600">{def.oauthNote}</span>
+              )}
+            </div>
+            {def.channelNote && !connected && def.available && (
+              <div className="mt-0.5 text-[11px] text-gray-600">{def.channelNote}</div>
+            )}
           </div>
-          {c.connected ? (
-            <span title="Coming in V2" className="inline-flex cursor-not-allowed">
-              <Button variant="ghost" size="sm" disabled>Disconnect</Button>
-            </span>
+        </div>
+
+        <div className="shrink-0">
+          {connected ? (
+            confirming ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Sure?</span>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={disconnecting}
+                  onClick={() => {
+                    onDisconnect()
+                    setConfirming(false)
+                  }}
+                >
+                  {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Disconnect'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : def.connectionType === 'managed' ? (
+              <Badge variant="gray">Managed</Badge>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+                Disconnect
+              </Button>
+            )
+          ) : def.available ? (
+            <Button variant="secondary" size="sm" onClick={onConnect}>
+              <Plug className="h-3.5 w-3.5" /> Connect
+            </Button>
           ) : (
-            <span title="Coming in V2" className="inline-flex cursor-not-allowed">
-              <Button variant="secondary" size="sm" disabled>Connect</Button>
+            <span title="Integration in development" className="inline-flex cursor-not-allowed">
+              <Button variant="ghost" size="sm" disabled>
+                Coming soon
+              </Button>
             </span>
           )}
         </div>
-      ))}
-    </Card>
+      </div>
+
+      {/* SendGrid sending-domain authentication sub-block */}
+      {connected && isSendgrid && (
+        <div
+          className={`mt-3 rounded-lg border px-3 py-2.5 text-xs ${
+            domainOk
+              ? 'border-emerald-500/20 bg-emerald-500/[0.04]'
+              : 'border-amber-500/25 bg-amber-500/[0.05]'
+          }`}
+        >
+          {domainOk ? (
+            <div className="flex items-center gap-2 text-emerald-300">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Sending domain {status?.domain} authenticated — emails send from @{status?.domain}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-amber-300">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Domain {status?.domain ?? '(no site domain)'} not authenticated
+              </div>
+              <div className="text-gray-500">
+                Emails send from @leadorch.io until {status?.domain ?? 'your domain'} is verified.
+              </div>
+              {status?.domain && (
+                <Button variant="secondary" size="sm" className="mt-1" onClick={onAuthDomain}>
+                  <ShieldCheck className="h-3.5 w-3.5" /> Authenticate {status.domain} →
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ConnectModal({
+  def,
+  onClose,
+  onConnected,
+}: {
+  def: PlatformDef
+  onClose: () => void
+  onConnected: (message: string) => void
+}) {
+  const connect = useConnectPlatform()
+  const [apiKey, setApiKey] = useState('')
+  const [profileId, setProfileId] = useState('')
+  const [show, setShow] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function submit() {
+    const key = apiKey.trim()
+    if (!key) {
+      setError('Paste the key first')
+      return
+    }
+    setError(null)
+    const extra =
+      def.id === 'buffer' && profileId.trim()
+        ? { profileMap: { linkedin: profileId.trim() } }
+        : undefined
+    connect.mutate(
+      { platform: def.id, apiKey: key, extra },
+      {
+        onSuccess: (data) => {
+          onConnected(`${def.name} connected${data.account ? ` · ${data.account}` : ''}`)
+          onClose()
+        },
+        onError: (e) => setError(toApiError(e).error),
+      },
+    )
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Connect ${def.name}`} description={def.description}>
+      <div className="space-y-4 p-6 pt-2">
+        <div>
+          <Label>{def.apiKeyLabel ?? 'API Key'}</Label>
+          <div className="relative">
+            <Input
+              type={show ? 'text' : 'password'}
+              autoFocus
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={KEY_PLACEHOLDER[def.id] ?? '••••••••'}
+              className="pr-10 font-mono"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit()
+              }}
+            />
+            <button
+              type="button"
+              aria-label={show ? 'Hide key' : 'Show key'}
+              onClick={() => setShow((s) => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {def.id === 'buffer' && (
+          <div>
+            <Label>
+              LinkedIn profile ID <span className="font-normal text-gray-600">(optional)</span>
+            </Label>
+            <Input
+              value={profileId}
+              onChange={(e) => setProfileId(e.target.value)}
+              placeholder="Buffer channel id for LinkedIn"
+              className="font-mono"
+            />
+            <p className="mt-1 text-xs text-gray-600">
+              Maps your LinkedIn channel so posts publish to the right account. Existing channel ids are kept.
+            </p>
+          </div>
+        )}
+
+        {def.apiKeyHelp && (
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-xs text-gray-500">
+            <div className="mb-0.5 font-medium text-gray-400">Where to find this</div>
+            {def.apiKeyHelp}
+          </div>
+        )}
+
+        {def.permissions && def.permissions.length > 0 && (
+          <div className="text-xs text-gray-500">
+            <div className="mb-1 font-medium text-gray-400">Permissions needed</div>
+            <ul className="space-y-0.5">
+              {def.permissions.map((p) => (
+                <li key={p} className="flex items-center gap-1.5">
+                  <Check className="h-3 w-3 text-emerald-400" /> {p}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex items-start gap-2 rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <Button variant="ghost" onClick={onClose} disabled={connect.isPending}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={connect.isPending || !apiKey.trim()}>
+            {connect.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Validating…
+              </>
+            ) : (
+              <>
+                <KeyRound className="h-4 w-4" /> Connect {def.name}
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+const DNS_PROVIDERS = [
+  {
+    id: 'cloudflare',
+    name: 'Cloudflare',
+    note: 'Enter just the part of the Name before your domain (e.g. "em9705") — Cloudflare appends the rest automatically. Set Proxy status to DNS only (grey cloud icon).',
+  },
+  {
+    id: 'route53',
+    name: 'Route 53 (AWS)',
+    note: 'Enter the full hostname including the domain, exactly as shown.',
+  },
+  {
+    id: 'godaddy',
+    name: 'GoDaddy',
+    note: 'Use only the subdomain part as the Name (the text before your domain).',
+  },
+  { id: 'other', name: 'Other', note: 'Enter the full hostname exactly as shown below.' },
+]
+
+function DomainAuthModal({
+  domain,
+  onClose,
+  onToast,
+}: {
+  domain: string | null
+  onClose: () => void
+  onToast: (t: ToastState) => void
+}) {
+  const { data, isFetching, refetch, error } = useDomainAuth()
+  const verify = useVerifyDomain()
+  const [provider, setProvider] = useState('cloudflare')
+  const [copied, setCopied] = useState(false)
+  const [result, setResult] = useState<'idle' | 'ok' | 'fail'>('idle')
+
+  useEffect(() => {
+    refetch()
+  }, [refetch])
+
+  const records = data
+    ? ([data.records.mail, data.records.dkim1, data.records.dkim2].filter(Boolean) as DomainAuthRecord[])
+    : []
+  const providerNote = DNS_PROVIDERS.find((p) => p.id === provider)?.note ?? ''
+  const dn = domain ?? data?.domain ?? 'your domain'
+
+  function copyAll() {
+    const text = records.map((r) => `${r.type}\t${r.name}\t${r.value}`).join('\n')
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  function runVerify() {
+    setResult('idle')
+    verify.mutate(undefined, {
+      onSuccess: (res) => {
+        setResult(res.valid ? 'ok' : 'fail')
+        // Reload the per-record valid flags. useDomainAuth is enabled:false, so
+        // the mutation's invalidateQueries can't refetch it — do it explicitly.
+        refetch()
+        if (res.valid) {
+          onToast({ message: `${res.domain} verified — emails will now send from @${res.domain}` })
+        }
+      },
+      onError: (e) => {
+        setResult('fail')
+        onToast({ message: toApiError(e).error, variant: 'error' })
+      },
+    })
+  }
+
+  const verified = result === 'ok' || data?.verified === true
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      className="max-w-2xl"
+      title={`Authenticate ${dn} for email sending`}
+      description={`Add these ${records.length || 3} DNS records to ${dn}, then verify.`}
+    >
+      <div className="space-y-5 p-6 pt-2">
+        {isFetching && !data && (
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading DNS records…
+          </div>
+        )}
+        {error && !data && (
+          <div className="flex items-start gap-2 rounded-lg bg-red-500/[0.08] px-3 py-2 text-sm text-red-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {toApiError(error).error}
+          </div>
+        )}
+
+        {data && (
+          <>
+            <div>
+              <div className="mb-1.5 text-sm font-medium text-gray-300">1. Choose your DNS provider</div>
+              <Select value={provider} onChange={(e) => setProvider(e.target.value)} className="max-w-xs">
+                {DNS_PROVIDERS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1.5 text-xs text-gray-500">{providerNote}</p>
+            </div>
+
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <div className="text-sm font-medium text-gray-300">2. Add these CNAME records</div>
+                <Button variant="ghost" size="sm" onClick={copyAll}>
+                  {copied ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-400" /> Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" /> Copy all
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-white/[0.06]">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-white/[0.03] text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Type</th>
+                      <th className="px-3 py-2 font-medium">Name</th>
+                      <th className="px-3 py-2 font-medium">Value</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-mono">
+                    {records.map((r) => (
+                      <tr key={r.name} className="border-t border-white/[0.04]">
+                        <td className="px-3 py-2 text-gray-400">{r.type}</td>
+                        <td className="break-all px-3 py-2 text-gray-200">{r.name}</td>
+                        <td className="break-all px-3 py-2 text-gray-400">{r.value}</td>
+                        <td className="px-3 py-2">
+                          {r.valid ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-400" />
+                          ) : (
+                            <span className="text-gray-600">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1 text-sm font-medium text-gray-300">3. Verify (after adding records)</div>
+              <p className="mb-2 text-xs text-gray-500">DNS propagation takes 5–30 minutes.</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={runVerify} disabled={verify.isPending}>
+                  {verify.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Checking DNS…
+                    </>
+                  ) : (
+                    'Verify now'
+                  )}
+                </Button>
+                {!verify.isPending && verified && (
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-300">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> {dn} verified
+                  </span>
+                )}
+                {!verify.isPending && !verified && result === 'fail' && (
+                  <span className="text-xs text-amber-300">
+                    Records not found yet. DNS can take 5–30 minutes to propagate. Try again shortly.
+                  </span>
+                )}
+                {!verify.isPending && !verified && result === 'idle' && (
+                  <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <span className="h-2 w-2 rounded-full bg-gray-600" /> Pending verification
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </Dialog>
   )
 }
 
@@ -501,7 +1001,7 @@ function ImportHistoryTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId])
 
-  const bufferConnected = !!(connections ?? []).find((c) => c.platform === 'Buffer')?.connected
+  const bufferConnected = !!(connections ?? []).find((c) => c.platform === 'buffer')?.connected
   const channels = Object.entries(selected).filter(([, v]) => v).map(([k]) => k)
 
   function run() {

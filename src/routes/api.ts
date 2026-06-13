@@ -12,7 +12,9 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { sql } from 'drizzle-orm';
 import { makeDb } from '../db/client.js';
-import { withTenantDb, assertUuid, findFirstSiteForTenant } from '../lib/tenant.js';
+import { withTenantDb, assertUuid, findFirstSiteForTenant, loadPlatformToken } from '../lib/tenant.js';
+import { encryptSecret, decryptSecret } from '../lib/secrets.js';
+import { loadSecret } from '../lib/credentials.js';
 import { brandGuardian } from '../agents/guardian.js';
 import { runGenerationPipeline } from '../workflows/generation.js';
 import { publishSingleDraft } from '../workflows/publish.js';
@@ -109,7 +111,7 @@ api.use('*', async (c, next) => {
 
 // ── helpers ─────────────────────────────────────────────────────────
 
-function err(c: Context, status: 400 | 401 | 404 | 422 | 500, code: string, message: string) {
+function err(c: Context, status: 400 | 401 | 404 | 422 | 500 | 502, code: string, message: string) {
   return c.json({ error: message, code }, status);
 }
 
@@ -932,49 +934,477 @@ api.delete('/documents/:id', async (c) => {
   return c.json({ ok: true });
 });
 
-// ── GET /api/connections ────────────────────────────────────────────
-// Connection status per platform — connected = a tenant_secrets row with a
-// non-null access token exists. The OAuth/connect flows are wired later.
+// ── Connections — connect-wizard backend ────────────────────────────
+// Real per-platform connection status (validated against the live provider API,
+// cached 5 min), self-serve connect/disconnect for the API-key platforms, and a
+// SendGrid sending-domain authentication guide.
+//
+// Security: a raw API key only ever exists in memory — it is validated with a
+// live call, then AES-GCM encrypted (lib/secrets) before it touches the DB. We
+// never log a key or token. Every query carries an explicit tenant_id predicate
+// and runs inside withTenantDb (RLS).
 
-const PLATFORMS: Array<{ label: string; keys: string[] }> = [
-  { label: 'HubSpot', keys: ['hubspot'] },
-  { label: 'SendGrid', keys: ['sendgrid'] },
-  { label: 'Buffer', keys: ['buffer'] },
-  { label: 'LinkedIn', keys: ['linkedin'] },
-  { label: 'X', keys: ['twitter', 'x'] },
-  { label: 'Meta', keys: ['meta', 'facebook', 'instagram'] },
-  { label: 'TikTok', keys: ['tiktok'] },
-  { label: 'Google Analytics', keys: ['ga4', 'google-analytics'] },
-  { label: 'Google Search Console', keys: ['gsc'] },
-  { label: 'Google Ads', keys: ['google-ads'] },
-  { label: 'Google Business Profile', keys: ['gbp'] },
+type ConnType = 'api_key' | 'oauth' | 'managed';
+
+interface ConnectionPlatform {
+  id: string; // stable id shared with the dashboard (dashboard/src/lib/platforms.ts)
+  secretPlatform: string; // tenant_secrets.platform key
+  type: ConnType;
+  canConnect: boolean; // true → self-serve connect flow exists
+  probe: boolean; // true → make a live validation call
+}
+
+// Platforms whose status this endpoint determines. The OAuth-native cards
+// (LinkedIn/X/Meta) have no credential to check and are rendered statically by
+// the dashboard, so they are intentionally omitted here.
+const CONNECTION_PLATFORMS: ConnectionPlatform[] = [
+  { id: 'buffer', secretPlatform: 'buffer', type: 'api_key', canConnect: true, probe: true },
+  { id: 'hubspot', secretPlatform: 'hubspot', type: 'api_key', canConnect: true, probe: true },
+  { id: 'sendgrid', secretPlatform: 'sendgrid', type: 'api_key', canConnect: true, probe: true },
+  { id: 'wix', secretPlatform: 'wix-blog', type: 'managed', canConnect: false, probe: false },
+  { id: 'google', secretPlatform: 'gsc', type: 'oauth', canConnect: false, probe: false },
 ];
 
+// Platforms a tenant can connect/disconnect with an API key via the wizard.
+const API_KEY_PLATFORMS = new Set(['buffer', 'hubspot', 'sendgrid']);
+const PLATFORM_LABEL: Record<string, string> = {
+  buffer: 'Buffer',
+  hubspot: 'HubSpot',
+  sendgrid: 'SendGrid',
+};
+
+// ── live validation probes ──────────────────────────────────────────
+// A probe authenticates a token against the provider and (when possible) reads a
+// display account. Tri-state so the caller can distinguish a definitively bad
+// key (invalid) from a transient outage (uncertain) — we never mark a tenant
+// disconnected just because the provider was briefly unreachable.
+type ProbeStatus = 'valid' | 'invalid' | 'uncertain';
+interface ProbeResult {
+  status: ProbeStatus;
+  account: string | null;
+}
+
+// Buffer's GraphQL API has no `viewer`; the authenticated account is `account`
+// (verified live: `{ account { id email name } }` returns the connected user).
+async function probeBuffer(token: string): Promise<ProbeResult> {
+  let res: Response;
+  try {
+    res = await fetch('https://api.buffer.com/graphql', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: '{ account { id email name } }' }),
+    });
+  } catch {
+    return { status: 'uncertain', account: null };
+  }
+  if (res.status === 401 || res.status === 403) return { status: 'invalid', account: null };
+  if (!res.ok) return { status: 'uncertain', account: null };
+  const body = (await res.json().catch(() => null)) as
+    | { data?: { account?: { id?: string; email?: string; name?: string } }; errors?: unknown[] }
+    | null;
+  const account = body?.data?.account;
+  if (!account?.id) {
+    // A schema-valid query that returns no account with errors present means the
+    // token was rejected; no body at all is a transient/unreadable response.
+    return { status: body?.errors ? 'invalid' : 'uncertain', account: null };
+  }
+  return { status: 'valid', account: account.email ?? account.name ?? account.id };
+}
+
+async function probeHubspot(token: string): Promise<ProbeResult> {
+  // Validate against the scope the connect UI actually asks Baran to grant
+  // (contacts — mirrors HubSpotAdapter.quotaState). The account-info API is a
+  // *different* scope a correctly-scoped private-app token may lack; using it to
+  // validate would 403 and misread a perfectly valid key as invalid.
+  let res: Response;
+  try {
+    res = await fetch('https://api.hubapi.com/crm/v3/objects/contacts?limit=1', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return { status: 'uncertain', account: null };
+  }
+  if (res.status === 401 || res.status === 403) return { status: 'invalid', account: null };
+  if (!res.ok) return { status: 'uncertain', account: null };
+  // Friendly "Portal NNN" label is best-effort: account-info is a separate scope,
+  // so a 403 here must not downgrade an otherwise-valid token.
+  let account: string | null = null;
+  try {
+    const ar = await fetch('https://api.hubapi.com/account-info/v3/details', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (ar.ok) {
+      const aj = (await ar.json().catch(() => null)) as { portalId?: number } | null;
+      account = aj?.portalId != null ? `Portal ${aj.portalId}` : null;
+    }
+  } catch {
+    /* best-effort label only */
+  }
+  return { status: 'valid', account };
+}
+
+// SendGrid's /user/profile carries no email (just { type, userid }); the account
+// email lives at /user/email, fetched best-effort for a friendlier label.
+async function probeSendgrid(token: string): Promise<ProbeResult> {
+  let res: Response;
+  try {
+    res = await fetch('https://api.sendgrid.com/v3/user/profile', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return { status: 'uncertain', account: null };
+  }
+  if (res.status === 401 || res.status === 403) return { status: 'invalid', account: null };
+  if (!res.ok) return { status: 'uncertain', account: null };
+  let account: string | null = null;
+  try {
+    const er = await fetch('https://api.sendgrid.com/v3/user/email', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (er.ok) {
+      const ej = (await er.json().catch(() => null)) as { email?: string } | null;
+      account = ej?.email ?? null;
+    }
+  } catch {
+    /* best-effort — a valid key without the email scope still counts as connected */
+  }
+  return { status: 'valid', account };
+}
+
+function probePlatform(platform: string, token: string): Promise<ProbeResult> {
+  switch (platform) {
+    case 'buffer':
+      return probeBuffer(token);
+    case 'hubspot':
+      return probeHubspot(token);
+    case 'sendgrid':
+      return probeSendgrid(token);
+    default:
+      return Promise.resolve({ status: 'uncertain', account: null });
+  }
+}
+
+// SendGrid sending-domain (whitelabel) status for the tenant's site domain.
+interface DomainStatus {
+  registered: boolean;
+  verified: boolean;
+}
+async function sendgridDomainStatus(token: string, domain: string | null): Promise<DomainStatus | null> {
+  if (!domain) return null;
+  try {
+    const res = await fetch('https://api.sendgrid.com/v3/whitelabel/domains?limit=50', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const arr = (await res.json().catch(() => null)) as Array<{ domain: string; valid?: boolean }> | null;
+    if (!Array.isArray(arr)) return null;
+    const hit = arr.find((d) => d.domain === domain);
+    if (!hit) return { registered: false, verified: false };
+    return { registered: true, verified: hit.valid === true };
+  } catch {
+    return null;
+  }
+}
+
+// ── 5-minute in-memory validation cache (per isolate) ───────────────
+interface CachedStatus {
+  connected: boolean;
+  account: string | null;
+  lastValidated: string | null;
+  domain?: string | null;
+  domainRegistered?: boolean;
+  domainVerified?: boolean;
+}
+const CONNECTION_CACHE = new Map<string, { value: CachedStatus; expires: number }>();
+const CONNECTION_TTL_MS = 5 * 60 * 1000;
+const connCacheKey = (tenantId: string, platform: string) => `${tenantId}:${platform}`;
+function bustConnectionCache(tenantId: string, platform: string) {
+  CONNECTION_CACHE.delete(connCacheKey(tenantId, platform));
+}
+
+// ── GET /api/connections ────────────────────────────────────────────
 api.get('/connections', async (c) => {
   const tenantId = tenantOf(c);
   if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
   const db = makeDb(c.env.DATABASE_URL);
-  const secrets = await withTenantDb(db, tenantId, async (tx) => {
+  const key = c.env.SECRETS_KEY;
+
+  const rows = await withTenantDb(db, tenantId, async (tx) => {
     const r = await tx.execute<Row>(sql`
-      SELECT platform, updated_at FROM marketing.tenant_secrets
-      WHERE tenant_id = ${tenantId} AND encrypted_access_token IS NOT NULL
+      SELECT platform, updated_at, encrypted_access_token
+      FROM marketing.tenant_secrets
+      WHERE tenant_id = ${tenantId}
     `);
     return r.rows;
   });
-  const byKey = new Map<string, Row>();
-  for (const s of secrets) byKey.set(String(s.platform).toLowerCase(), s);
+  const bySecret = new Map<string, Row>();
+  for (const s of rows) bySecret.set(String(s.platform).toLowerCase(), s);
 
-  return c.json({
-    connections: PLATFORMS.map((p) => {
-      const hit = p.keys.map((k) => byKey.get(k)).find(Boolean);
-      return {
-        platform: p.label,
-        connected: !!hit,
-        account: null,
-        lastSyncAt: hit?.updated_at ?? null,
+  const site = await findFirstSiteForTenant(db, tenantId);
+  const tenantDomain = site?.domain ?? null;
+
+  const connections = await Promise.all(
+    CONNECTION_PLATFORMS.map(async (p) => {
+      const row = bySecret.get(p.secretPlatform);
+      const cipher = (row?.encrypted_access_token as string | null) ?? null;
+      const hasCred = !!cipher;
+      const lastSyncAt = (row?.updated_at as string | null) ?? null;
+      const base = {
+        platform: p.id,
+        connectionType: p.type,
+        canConnect: p.canConnect,
+        lastSyncAt,
       };
+
+      // Managed/OAuth platforms: connected = a credential exists (no live call).
+      if (!p.probe) {
+        return {
+          ...base,
+          connected: hasCred,
+          account: null,
+          lastValidated: hasCred ? lastSyncAt : null,
+        };
+      }
+      if (!hasCred) {
+        return { ...base, connected: false, account: null, lastValidated: null };
+      }
+
+      const ck = connCacheKey(tenantId, p.id);
+      const cached = CONNECTION_CACHE.get(ck);
+      if (cached && cached.expires > Date.now()) {
+        return { ...base, ...cached.value };
+      }
+
+      let value: CachedStatus;
+      try {
+        const token = await decryptSecret(cipher as string, key);
+        const probe = await probePlatform(p.id, token);
+        if (probe.status === 'valid') {
+          value = { connected: true, account: probe.account, lastValidated: new Date().toISOString() };
+        } else if (probe.status === 'invalid') {
+          value = { connected: false, account: null, lastValidated: null };
+        } else {
+          // Credential exists but validation couldn't complete — keep it
+          // connected with an uncertain (null) lastValidated rather than flapping.
+          value = { connected: true, account: null, lastValidated: null };
+        }
+        if (p.id === 'sendgrid' && value.connected) {
+          const ds = await sendgridDomainStatus(token, tenantDomain);
+          value.domain = tenantDomain;
+          value.domainRegistered = ds?.registered ?? false;
+          value.domainVerified = ds?.verified ?? false;
+        }
+      } catch {
+        // Credential exists but the validation threw → assume connected, uncertain.
+        value = { connected: true, account: null, lastValidated: null };
+      }
+      CONNECTION_CACHE.set(ck, { value, expires: Date.now() + CONNECTION_TTL_MS });
+      return { ...base, ...value };
     }),
+  );
+
+  return c.json({ connections });
+});
+
+// ── POST /api/connections/:platform/connect ─────────────────────────
+// Validate an API key with a live call, then encrypt + store it. The raw key
+// only exists in memory for the validation; the DB only ever sees ciphertext.
+api.post('/connections/:platform/connect', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const platform = c.req.param('platform').toLowerCase();
+  if (!API_KEY_PLATFORMS.has(platform)) {
+    return err(c, 422, 'unsupported_platform', `${platform} cannot be connected with an API key`);
+  }
+  const body = await c.req.json<Record<string, any>>().catch(() => null);
+  const apiKey = typeof body?.apiKey === 'string' ? body.apiKey.trim() : '';
+  if (!apiKey) return err(c, 422, 'missing_api_key', 'apiKey is required');
+  const label = PLATFORM_LABEL[platform];
+
+  // 1. Validate the raw key with a live call BEFORE storing anything.
+  let probe: ProbeResult;
+  try {
+    probe = await probePlatform(platform, apiKey);
+  } catch {
+    probe = { status: 'uncertain', account: null };
+  }
+  if (probe.status === 'invalid') {
+    return err(c, 400, 'invalid_credential', `That ${label} key was rejected — double-check it and try again.`);
+  }
+  if (probe.status === 'uncertain') {
+    return err(c, 400, 'validation_unavailable', `Couldn't reach ${label} to validate the key. Try again in a moment.`);
+  }
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const key = c.env.SECRETS_KEY;
+
+  // 2. Buffer publishes through per-channel ids; merge any provided profile map
+  //    into the existing one so a partial update never drops other channels' ids.
+  let profileMapCipher: string | null = null;
+  if (platform === 'buffer' && body?.profileMap && typeof body.profileMap === 'object') {
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(body.profileMap as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.trim()) clean[k.toLowerCase().trim()] = v.trim();
+    }
+    if (Object.keys(clean).length) {
+      const existing = await loadSecret(db, tenantId, 'buffer', key);
+      const merged = { ...(existing?.profileMap ?? {}), ...clean };
+      profileMapCipher = await encryptSecret(JSON.stringify(merged), key);
+    }
+  }
+
+  // 3. Encrypt + store. The raw key leaves memory here only as ciphertext.
+  const cipher = await encryptSecret(apiKey, key);
+  await withTenantDb(db, tenantId, async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO marketing.tenant_secrets
+        (tenant_id, platform, encrypted_access_token, encrypted_profile_map, updated_at)
+      VALUES (${tenantId}, ${platform}, ${cipher}, ${profileMapCipher}, now())
+      ON CONFLICT (tenant_id, platform) DO UPDATE SET
+        encrypted_access_token = EXCLUDED.encrypted_access_token,
+        encrypted_profile_map = COALESCE(EXCLUDED.encrypted_profile_map, marketing.tenant_secrets.encrypted_profile_map),
+        updated_at = now()
+    `);
   });
+  bustConnectionCache(tenantId, platform);
+
+  return c.json({ ok: true, account: probe.account, message: `${label} connected` });
+});
+
+// ── POST /api/connections/:platform/disconnect ──────────────────────
+api.post('/connections/:platform/disconnect', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const platform = c.req.param('platform').toLowerCase();
+  if (!API_KEY_PLATFORMS.has(platform)) {
+    return err(c, 422, 'unsupported_platform', `${platform} cannot be disconnected here`);
+  }
+  const body = await c.req.json<Record<string, any>>().catch(() => null);
+  if (body?.confirm !== true) {
+    return err(c, 400, 'confirmation_required', 'Set confirm:true to disconnect');
+  }
+  const db = makeDb(c.env.DATABASE_URL);
+  await withTenantDb(db, tenantId, async (tx) => {
+    await tx.execute(sql`
+      DELETE FROM marketing.tenant_secrets
+      WHERE tenant_id = ${tenantId} AND platform = ${platform}
+    `);
+  });
+  bustConnectionCache(tenantId, platform);
+  return c.json({ ok: true });
+});
+
+// ── GET /api/connections/sendgrid/domain-auth ───────────────────────
+// The CNAME records Baran adds to his sending domain. SendGrid stores domain
+// authentications account-wide; we match the tenant's site domain. If it isn't
+// registered yet we register it (subdomain "em", automatic security) so there
+// are records to hand back. Only fired when the dashboard opens the modal.
+function sgRecord(r: { type?: string; host?: string; data?: string; valid?: boolean } | undefined | null) {
+  if (!r) return null;
+  return {
+    type: (r.type ?? 'cname').toUpperCase(),
+    name: r.host ?? '',
+    value: r.data ?? '',
+    valid: r.valid === true,
+  };
+}
+
+api.get('/connections/sendgrid/domain-auth', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const db = makeDb(c.env.DATABASE_URL);
+  const token = await loadPlatformToken(db, tenantId, 'sendgrid', c.env.SECRETS_KEY);
+  if (!token) return err(c, 400, 'not_connected', 'SendGrid is not connected');
+  const site = await findFirstSiteForTenant(db, tenantId);
+  const domain = site?.domain ?? null;
+  if (!domain) return err(c, 422, 'no_domain', 'Tenant has no site domain');
+
+  let list: Array<Record<string, any>>;
+  try {
+    const res = await fetch('https://api.sendgrid.com/v3/whitelabel/domains?limit=50', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return err(c, 502, 'sendgrid_error', `SendGrid responded ${res.status}`);
+    const j = await res.json().catch(() => null);
+    list = Array.isArray(j) ? j : [];
+  } catch {
+    return err(c, 502, 'sendgrid_unreachable', 'Could not reach SendGrid');
+  }
+
+  let domainAuth = list.find((d) => d.domain === domain);
+  if (!domainAuth) {
+    try {
+      const res = await fetch('https://api.sendgrid.com/v3/whitelabel/domains', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, subdomain: 'em', automatic_security: true }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) return err(c, 502, 'sendgrid_create_failed', `SendGrid could not register ${domain}`);
+      domainAuth = j as Record<string, any>;
+    } catch {
+      return err(c, 502, 'sendgrid_unreachable', 'Could not reach SendGrid');
+    }
+  }
+
+  const dns = (domainAuth?.dns ?? {}) as Record<string, any>;
+  return c.json({
+    domain,
+    id: domainAuth?.id ?? null,
+    registered: true,
+    verified: domainAuth?.valid === true,
+    records: {
+      mail: sgRecord(dns.mail_cname),
+      dkim1: sgRecord(dns.dkim1),
+      dkim2: sgRecord(dns.dkim2),
+    },
+  });
+});
+
+// ── POST /api/connections/sendgrid/verify-domain ────────────────────
+// Asks SendGrid to re-check the domain's DNS now (after Baran adds the records).
+api.post('/connections/sendgrid/verify-domain', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const db = makeDb(c.env.DATABASE_URL);
+  const token = await loadPlatformToken(db, tenantId, 'sendgrid', c.env.SECRETS_KEY);
+  if (!token) return err(c, 400, 'not_connected', 'SendGrid is not connected');
+  const site = await findFirstSiteForTenant(db, tenantId);
+  const domain = site?.domain ?? null;
+  if (!domain) return err(c, 422, 'no_domain', 'Tenant has no site domain');
+
+  let domainId: number | null = null;
+  try {
+    const res = await fetch('https://api.sendgrid.com/v3/whitelabel/domains?limit=50', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const j = await res.json().catch(() => null);
+    const hit = Array.isArray(j) ? j.find((d: Record<string, any>) => d.domain === domain) : null;
+    domainId = hit?.id ?? null;
+  } catch {
+    return err(c, 502, 'sendgrid_unreachable', 'Could not reach SendGrid');
+  }
+  if (!domainId) {
+    return err(c, 400, 'not_registered', `${domain} isn't registered in SendGrid yet — open the domain auth guide first`);
+  }
+
+  try {
+    const res = await fetch(`https://api.sendgrid.com/v3/whitelabel/domains/${domainId}/validate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+    const j = (await res.json().catch(() => null)) as
+      | { valid?: boolean; validation_results?: unknown }
+      | null;
+    bustConnectionCache(tenantId, 'sendgrid');
+    return c.json({
+      domain,
+      valid: j?.valid === true,
+      validationResults: j?.validation_results ?? null,
+    });
+  } catch {
+    return err(c, 502, 'sendgrid_unreachable', 'Could not reach SendGrid');
+  }
 });
 
 // ── POST /api/generate ──────────────────────────────────────────────
