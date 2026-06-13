@@ -162,6 +162,8 @@ export interface PlatformConnection {
   lastSyncAt: string | null
   connectionType: 'api_key' | 'oauth' | 'managed'
   canConnect: boolean
+  // Google (OAuth) only — the scopes granted, used to render active services.
+  scopes?: string[]
   // SendGrid only — sending-domain authentication status.
   domain?: string | null
   domainRegistered?: boolean
@@ -276,6 +278,7 @@ export type RecommendationType =
   | 'trending_opportunity'
   | 'queue_health'
   | 'engagement_followup'
+  | 'seo_opportunity'
 
 export type RecommendationActionType = 'generate' | 'approve' | 'review_queue'
 

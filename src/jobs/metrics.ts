@@ -27,7 +27,9 @@ import { getAllActiveTenants, withTenantDb } from '../lib/tenant.js';
 import { loadSecret, resolveAdapter } from '../lib/credentials.js';
 import { embedOne } from '../corpus/embedder.js';
 import { GscAdapter, flagHighPerformers, type GscRow } from '../adapters/gsc.js';
+import { AdapterHttpError } from '../adapters/index.js';
 import { UmamiAdapter } from '../adapters/umami.js';
+import { GOOGLE_PLATFORM, refreshGoogleAccessToken } from '../lib/google-oauth.js';
 import { mirrorEnvToProcess, type PipelineEnv } from '../workflows/types.js';
 
 type Db = NeonDatabase<Record<string, unknown>>;
@@ -228,9 +230,32 @@ interface SiteRow extends Record<string, any> {
 
 export async function syncGscKeywords(env: MetricsEnv, db: Db, tenantId: string): Promise<number> {
   // Tenant-level Google credential (stored under platform='google').
-  const secret = await loadSecret(db, tenantId, 'google', env.SECRETS_KEY);
-  if (!secret || !secret.refreshToken || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+  const secret = await loadSecret(db, tenantId, GOOGLE_PLATFORM, env.SECRETS_KEY);
+  const clientId = env.GOOGLE_CLIENT_ID;
+  const clientSecret = env.GOOGLE_CLIENT_SECRET;
+  if (!secret?.refreshToken || !clientId || !clientSecret) {
     return 0; // GSC not connected for this tenant — skip silently.
+  }
+
+  // The stored access token lasts ~1h; this nightly cron's copy is always stale,
+  // so refresh + persist before any GSC call (else fetchKeywordData 401s). The
+  // refresh reuses the stored refresh token and writes the fresh token back.
+  let accessToken: string;
+  try {
+    accessToken = await refreshGoogleAccessToken({
+      db,
+      tenantId,
+      secret,
+      secretsKey: env.SECRETS_KEY,
+      clientId,
+      clientSecret,
+    });
+  } catch (err) {
+    console.error(
+      `[metrics:gsc] token refresh failed for ${tenantId} — skipping:`,
+      err instanceof Error ? err.message : err,
+    );
+    return 0;
   }
 
   const sites = await withTenantDb(db, tenantId, async (tx) => {
@@ -241,9 +266,9 @@ export async function syncGscKeywords(env: MetricsEnv, db: Db, tenantId: string)
   });
 
   const adapter = new GscAdapter({
-    accessToken: secret.accessToken,
+    accessToken,
     refreshToken: secret.refreshToken,
-    extra: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET },
+    extra: { clientId, clientSecret },
   });
 
   const weekOf = mondayOfWeek();
@@ -255,7 +280,15 @@ export async function syncGscKeywords(env: MetricsEnv, db: Db, tenantId: string)
     try {
       rows = await adapter.fetchKeywordData(siteUrl, GSC_LOOKBACK_DAYS);
     } catch (err) {
-      console.error(`[metrics:gsc] ${siteUrl} fetch failed:`, err instanceof Error ? err.message : err);
+      if (err instanceof AdapterHttpError && err.status === 403) {
+        // 403 = the property isn't verified in GSC for the connected account.
+        console.error(
+          `[metrics:gsc] ${siteUrl} returned 403 — not verified in Google Search Console for the ` +
+            `connected account. Add the property at search.google.com/search-console.`,
+        );
+      } else {
+        console.error(`[metrics:gsc] ${siteUrl} fetch failed:`, err instanceof Error ? err.message : err);
+      }
       continue;
     }
     if (rows.length === 0) continue;
@@ -289,7 +322,7 @@ export async function syncGscKeywords(env: MetricsEnv, db: Db, tenantId: string)
   return upserted;
 }
 
-function toGscSiteUrl(domain: string): string {
+export function toGscSiteUrl(domain: string): string {
   if (domain.startsWith('http://') || domain.startsWith('https://') || domain.startsWith('sc-domain:')) {
     return domain;
   }

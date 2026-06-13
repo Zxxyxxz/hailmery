@@ -40,6 +40,7 @@ const TYPE_META: Record<RecommendationType, { label: string; badge: string }> = 
   trending_opportunity: { label: 'Trending', badge: 'purple' },
   queue_health: { label: 'Queue health', badge: 'amber' },
   engagement_followup: { label: 'Follow-up', badge: 'green' },
+  seo_opportunity: { label: 'SEO', badge: 'orange' },
 }
 
 interface PriorityTier {

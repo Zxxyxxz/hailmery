@@ -16,6 +16,8 @@ export interface PlatformDef {
   permissions?: string[]
   /** for unavailable OAuth/managed platforms */
   oauthNote?: string
+  /** OAuth platforms: the Google services a single sign-in grants. */
+  oauthServices?: string[]
   /** e.g. "Covers LinkedIn, X, Instagram, Facebook" */
   channelNote?: string
   /** SendGrid only — shows the sending-domain authentication guide */
@@ -61,8 +63,9 @@ export const PLATFORMS: PlatformDef[] = [
     name: 'Google (Analytics + Search Console)',
     description: 'Web analytics, SEO keyword data, Google Ads',
     connectionType: 'oauth',
-    available: false,
-    oauthNote: 'OAuth integration coming in V2. GSC and GA4 will connect with one Google sign-in.',
+    available: true,
+    channelNote: 'Search Console + Analytics · one Google sign-in',
+    oauthServices: ['Google Search Console', 'Google Analytics'],
   },
   {
     id: 'linkedin-native',

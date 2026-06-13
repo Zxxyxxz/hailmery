@@ -127,10 +127,14 @@ END $$;
 DO $$ BEGIN
   CREATE TYPE marketing.recommendation_type AS ENUM (
     'content_gap', 'channel_rebalance', 'trending_opportunity',
-    'queue_health', 'engagement_followup'
+    'queue_health', 'engagement_followup', 'seo_opportunity'
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+-- seo_opportunity (Session 10) is in the CREATE list above for fresh DBs; for an
+-- already-created enum it's added by the standalone ALTER TYPE ... ADD VALUE in
+-- src/db/migrate.ts (run as its own statement — ADD VALUE can't be used in the
+-- same transaction it's added, and rls.sql executes as one implicit txn).
 
 DO $$ BEGIN
   CREATE TYPE marketing.recommendation_action_type AS ENUM (

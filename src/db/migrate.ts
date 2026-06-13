@@ -33,6 +33,19 @@ async function main() {
     const rlsSql = await readFile(join(__dirname, 'rls.sql'), 'utf-8');
     await client.query(rlsSql);
 
+    // Enum value additions for ALREADY-created types. `ALTER TYPE ... ADD VALUE`
+    // can't be used in the same transaction it's added, and rls.sql runs as one
+    // implicit transaction — so each addition runs here as its own autocommit
+    // statement. IF NOT EXISTS makes them idempotent (no-op on fresh DBs, where
+    // rls.sql's CREATE TYPE already lists the value). Constants only — no input.
+    const enumAdditions: Array<{ type: string; value: string }> = [
+      { type: 'marketing.recommendation_type', value: 'seo_opportunity' },
+    ];
+    for (const { type, value } of enumAdditions) {
+      console.log(`[migrate] ensuring enum value ${type} += '${value}'`);
+      await client.query(`ALTER TYPE ${type} ADD VALUE IF NOT EXISTS '${value}'`);
+    }
+
     console.log('[migrate] done');
   } finally {
     client.release();

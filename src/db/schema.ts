@@ -93,6 +93,9 @@ export const recommendationType = marketing.enum('recommendation_type', [
   'trending_opportunity',
   'queue_health',
   'engagement_followup',
+  // Session 10 (GSC): striking-distance Search Console query → blog post.
+  // Added to existing DBs via the ALTER TYPE step in src/db/migrate.ts.
+  'seo_opportunity',
 ]);
 
 export const recommendationActionType = marketing.enum('recommendation_action_type', [

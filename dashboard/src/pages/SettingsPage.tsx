@@ -21,8 +21,9 @@ import {
   EyeOff,
   Lock,
 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTenant } from '@/lib/tenant-context'
-import { toApiError } from '@/lib/api'
+import { toApiError, API_BASE_URL } from '@/lib/api'
 import {
   useCampaigns,
   useConnections,
@@ -203,17 +204,95 @@ const KEY_PLACEHOLDER: Record<string, string> = {
   sendgrid: 'SG.xxxxxxxxxxxxxxxxxxxxxx…',
 }
 
+// Friendly text for the error codes the OAuth callback posts back.
+const OAUTH_ERROR_LABELS: Record<string, string> = {
+  access_denied: 'you cancelled the Google consent screen',
+  missing_params: 'Google returned an incomplete response',
+  invalid_state: 'the sign-in session expired — try again',
+  token_exchange_failed: 'Google rejected the authorization',
+  oauth_not_configured: 'Google OAuth is not configured on the server',
+  store_failed: 'the credential could not be saved',
+  no_refresh_token:
+    'Google did not return a refresh token — revoke hailmery at myaccount.google.com → Security → Third-party access, then reconnect',
+}
+function oauthErrorLabel(code: unknown): string {
+  if (typeof code !== 'string') return 'unknown error'
+  return OAUTH_ERROR_LABELS[code] ?? code
+}
+
 function PlatformsTab() {
   const { data: connections, isLoading } = useConnections()
   const disconnect = useDisconnectPlatform()
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
   const [connectId, setConnectId] = useState<string | null>(null)
   const [domainOpen, setDomainOpen] = useState(false)
   const [toast, setToast] = useState<ToastState | null>(null)
+  const [oauthBusy, setOauthBusy] = useState<string | null>(null)
 
   const byId = useMemo(
     () => new Map((connections ?? []).map((c) => [c.platform, c])),
     [connections],
   )
+
+  // OAuth (Google) connect — opens the consent flow in a popup and reconciles on
+  // the postMessage the callback page sends back. No token ever reaches the
+  // browser; we just invalidate the connections query so the card re-renders.
+  function connectOAuth(def: PlatformDef) {
+    if (!currentId) {
+      setToast({ message: 'Select a tenant first', variant: 'error' })
+      return
+    }
+    const url = `${API_BASE_URL}/api/auth/${def.id}/start?tenant=${encodeURIComponent(currentId)}`
+    const popup = window.open(url, 'hm-oauth-connect', 'width=560,height=720,scrollbars=yes,resizable=yes')
+    if (!popup) {
+      setToast({ message: 'Popup blocked — allow popups for this site, then try again.', variant: 'error' })
+      return
+    }
+    setOauthBusy(def.id)
+    // Only trust messages from the Worker callback origin (where the popup ends
+    // up) — never a same-page or third-window postMessage spoofing a result.
+    const expectedOrigin = new URL(API_BASE_URL).origin
+
+    let poll: ReturnType<typeof setInterval>
+    let timeout: ReturnType<typeof setTimeout>
+    const detach = () => {
+      window.removeEventListener('message', handler)
+      clearInterval(poll)
+      clearTimeout(timeout)
+      setOauthBusy(null)
+    }
+    const finish = () => {
+      detach()
+      try {
+        popup.close()
+      } catch {
+        /* cross-origin close may throw post-navigation — ignore */
+      }
+    }
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== expectedOrigin || event.source !== popup) return
+      const data = event.data as { type?: string; account?: string; error?: string } | null
+      if (!data || typeof data !== 'object') return
+      if (data.type === 'google-oauth-success') {
+        finish()
+        qc.invalidateQueries({ queryKey: ['connections', currentId] })
+        setToast({ message: `${def.name} connected${data.account ? ` · ${data.account}` : ''}` })
+      } else if (data.type === 'google-oauth-error') {
+        finish()
+        setToast({ message: `Connection failed: ${oauthErrorLabel(data.error)}`, variant: 'error' })
+      }
+    }
+    window.addEventListener('message', handler)
+    // Recover if the user closes the popup manually (no message arrives).
+    poll = setInterval(() => {
+      if (popup.closed) finish()
+    }, 800)
+    // Safety net: only DETACH the listener/poll — never force-close the popup,
+    // which would abort a consent the user may still be completing (the signed
+    // state is valid for 10 min). The callback self-closes the popup on finish.
+    timeout = setTimeout(detach, 12 * 60 * 1000)
+  }
 
   if (isLoading) return <Skeleton className="h-96 rounded-2xl" />
 
@@ -229,7 +308,10 @@ function PlatformsTab() {
             def={p}
             status={byId.get(p.id)}
             disconnecting={disconnect.isPending && disconnect.variables === p.id}
-            onConnect={() => setConnectId(p.id)}
+            connecting={oauthBusy === p.id}
+            onConnect={() =>
+              p.connectionType === 'oauth' ? connectOAuth(p) : setConnectId(p.id)
+            }
             onAuthDomain={() => setDomainOpen(true)}
             onDisconnect={() =>
               disconnect.mutate(p.id, {
@@ -264,10 +346,22 @@ function PlatformsTab() {
   )
 }
 
+// Maps a displayed Google service to the scope substring that proves it's
+// granted, so a connected card lights up only the services actually authorized.
+const GOOGLE_SERVICE_SCOPE: Record<string, string> = {
+  'Google Search Console': 'webmasters',
+  'Google Analytics': 'analytics',
+}
+function isServiceActive(service: string, scopes?: string[]): boolean {
+  const needle = GOOGLE_SERVICE_SCOPE[service]
+  return !!needle && !!scopes?.some((s) => s.includes(needle))
+}
+
 function PlatformRow({
   def,
   status,
   disconnecting,
+  connecting,
   onConnect,
   onAuthDomain,
   onDisconnect,
@@ -275,6 +369,7 @@ function PlatformRow({
   def: PlatformDef
   status?: PlatformConnection
   disconnecting: boolean
+  connecting: boolean
   onConnect: () => void
   onAuthDomain: () => void
   onDisconnect: () => void
@@ -348,8 +443,13 @@ function PlatformRow({
               </Button>
             )
           ) : def.available ? (
-            <Button variant="secondary" size="sm" onClick={onConnect}>
-              <Plug className="h-3.5 w-3.5" /> Connect
+            <Button variant="secondary" size="sm" onClick={onConnect} disabled={connecting}>
+              {connecting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Plug className="h-3.5 w-3.5" />
+              )}
+              {connecting ? 'Connecting…' : 'Connect'}
             </Button>
           ) : (
             <span title="Integration in development" className="inline-flex cursor-not-allowed">
@@ -391,6 +491,33 @@ function PlatformRow({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* OAuth (Google) sub-services — lit green for the scopes actually granted */}
+      {def.connectionType === 'oauth' && def.oauthServices && def.oauthServices.length > 0 && (
+        <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+          <div className="mb-1.5 text-[11px] font-medium text-gray-500">
+            {connected ? 'Active services' : 'This connects'}
+          </div>
+          <div className="space-y-1">
+            {def.oauthServices.map((svc) => {
+              const active = connected && isServiceActive(svc, status?.scopes)
+              return (
+                <div
+                  key={svc}
+                  className={`flex items-center gap-1.5 text-xs ${active ? 'text-emerald-300' : 'text-gray-500'}`}
+                >
+                  {active ? (
+                    <Check className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-600" />
+                  )}
+                  {svc}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

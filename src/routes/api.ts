@@ -35,6 +35,20 @@ import {
 } from '../corpus/extract.js';
 import { embedChunks, replaceDocumentChunks } from '../corpus/ingest.js';
 import { putObject, getObject, deleteObject } from '../lib/storage.js';
+import {
+  GOOGLE_PLATFORM,
+  GOOGLE_SCOPES,
+  generateOAuthState,
+  verifyOAuthState,
+  buildGoogleConsentUrl,
+  exchangeCodeForTokens,
+  fetchGoogleEmail,
+  storeGoogleCredential,
+  refreshGoogleAccessToken,
+} from '../lib/google-oauth.js';
+import { GscAdapter } from '../adapters/gsc.js';
+import { AdapterHttpError } from '../adapters/index.js';
+import { syncGscKeywords, toGscSiteUrl } from '../jobs/metrics.js';
 
 type ApiEnv = {
   DATABASE_URL: string;
@@ -43,6 +57,11 @@ type ApiEnv = {
   SECRETS_KEY: string;
   IDEOGRAM_API_KEY?: string;
   GOOGLE_API_KEY?: string;
+  // Google OAuth client config — used by the /api/auth/google/* routes (token
+  // exchange + refresh) and the GSC debug sync. Worker secrets, optional so the
+  // Node CLI path still type-checks.
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   IMAGE_PROVIDER?: string;
   R2_PUBLIC_BASE_URL?: string;
   // R2 bucket for uploaded corpus documents (see wrangler.toml). Optional so the
@@ -962,11 +981,20 @@ const CONNECTION_PLATFORMS: ConnectionPlatform[] = [
   { id: 'hubspot', secretPlatform: 'hubspot', type: 'api_key', canConnect: true, probe: true },
   { id: 'sendgrid', secretPlatform: 'sendgrid', type: 'api_key', canConnect: true, probe: true },
   { id: 'wix', secretPlatform: 'wix-blog', type: 'managed', canConnect: false, probe: false },
-  { id: 'google', secretPlatform: 'gsc', type: 'oauth', canConnect: false, probe: false },
+  // Google stores its grant under platform='google' (the metrics job reads the
+  // same key); an earlier draft used 'gsc' here and the status check never saw
+  // the token. `probe: false` — we trust the stored expiry instead of hitting
+  // Google on every dashboard load (the connections handler surfaces the email +
+  // active scopes from the stored row).
+  { id: 'google', secretPlatform: GOOGLE_PLATFORM, type: 'oauth', canConnect: true, probe: false },
 ];
 
 // Platforms a tenant can connect/disconnect with an API key via the wizard.
 const API_KEY_PLATFORMS = new Set(['buffer', 'hubspot', 'sendgrid']);
+// Platforms the disconnect route may delete — the API-key set plus Google, whose
+// credential is removed the same way (delete the tenant_secrets row) even though
+// it's acquired via OAuth rather than a pasted key.
+const DISCONNECTABLE_PLATFORMS = new Set([...API_KEY_PLATFORMS, GOOGLE_PLATFORM]);
 const PLATFORM_LABEL: Record<string, string> = {
   buffer: 'Buffer',
   hubspot: 'HubSpot',
@@ -1122,6 +1150,229 @@ function bustConnectionCache(tenantId: string, platform: string) {
   CONNECTION_CACHE.delete(connCacheKey(tenantId, platform));
 }
 
+// ── Google OAuth (one grant → GSC today, GA4/Ads later) ─────────────
+// Flow: the dashboard opens /api/auth/google/start in a popup → we redirect to
+// Google's consent screen with an HMAC-signed `state` (CSRF guard) → Google
+// redirects back to /api/auth/google/callback → we verify state, exchange the
+// code, encrypt + store the tokens, and postMessage the result to the opener.
+// No token ever reaches the browser; only the account email + scopes do.
+
+// Render the popup's terminal HTML. The result is delivered via postMessage with
+// the payload JSON-encoded AND HTML-escaped so neither a Google-supplied `error`
+// string nor an account email can break out of the <script> (defense in depth —
+// emails never contain these, but the error param is attacker-influenced).
+function oauthPopupHtml(payload: Record<string, unknown>): string {
+  const json = JSON.stringify(payload)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Connecting…</title></head>
+<body style="font-family:system-ui;background:#0b0b0f;color:#9ca3af;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<p>You can close this window.</p>
+<script>(function(){try{window.opener&&window.opener.postMessage(${json},'*');}catch(e){}window.close();})();</script>
+</body></html>`;
+}
+
+// GET /api/auth/google/start?tenant=<uuid> — kick off consent. tenant comes as a
+// query param (this is a top-level browser navigation, not an XHR with headers).
+api.get('/auth/google/start', async (c) => {
+  const tenantId = c.req.query('tenant');
+  if (!tenantId) return c.text('tenant required', 400);
+  try {
+    assertUuid(tenantId, 'tenant');
+  } catch {
+    return c.text('invalid tenant', 400);
+  }
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return c.text('Google OAuth is not configured on this server', 500);
+
+  const state = await generateOAuthState(c.env.SECRETS_KEY, { tenantId });
+  return c.redirect(buildGoogleConsentUrl(clientId, state));
+});
+
+// GET /api/auth/google/callback — Google redirects here with ?code&state (or
+// ?error on denial). Returns popup HTML in every case so the window always
+// closes and the opener is notified.
+api.get('/auth/google/callback', async (c) => {
+  const code = c.req.query('code');
+  const state = c.req.query('state');
+  const oauthError = c.req.query('error');
+
+  if (oauthError) {
+    return c.html(oauthPopupHtml({ type: 'google-oauth-error', error: oauthError.slice(0, 80) }));
+  }
+  if (!code || !state) {
+    return c.html(oauthPopupHtml({ type: 'google-oauth-error', error: 'missing_params' }));
+  }
+
+  const payload = await verifyOAuthState(c.env.SECRETS_KEY, state);
+  const tenantId = typeof payload?.tenantId === 'string' ? payload.tenantId : null;
+  if (!tenantId) {
+    return c.html(oauthPopupHtml({ type: 'google-oauth-error', error: 'invalid_state' }));
+  }
+  try {
+    assertUuid(tenantId, 'tenant');
+  } catch {
+    return c.html(oauthPopupHtml({ type: 'google-oauth-error', error: 'invalid_state' }));
+  }
+
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  const clientSecret = c.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return c.html(oauthPopupHtml({ type: 'google-oauth-error', error: 'oauth_not_configured' }));
+  }
+
+  let tokens;
+  try {
+    tokens = await exchangeCodeForTokens({ code, clientId, clientSecret });
+  } catch (e) {
+    console.error('[oauth/google] token exchange failed:', (e as Error).message);
+    return c.html(oauthPopupHtml({ type: 'google-oauth-error', error: 'token_exchange_failed' }));
+  }
+
+  const email = await fetchGoogleEmail(tokens.access_token);
+  const scopes = tokens.scope ? tokens.scope.split(' ') : GOOGLE_SCOPES;
+  const db = makeDb(c.env.DATABASE_URL);
+
+  // A usable grant needs a refresh token (access_type=offline + prompt=consent
+  // normally guarantees one). If Google omits it AND there's no stored refresh
+  // token to fall back on, refuse to write — otherwise the row would look
+  // "connected" forever while the ~1h access token expires and the nightly sync
+  // silently skips. The user revokes prior access (myaccount.google.com) and
+  // reconnects to obtain a fresh refresh token.
+  if (!tokens.refresh_token) {
+    const existing = await loadSecret(db, tenantId, GOOGLE_PLATFORM, c.env.SECRETS_KEY);
+    if (!existing?.refreshToken) {
+      return c.html(oauthPopupHtml({ type: 'google-oauth-error', error: 'no_refresh_token' }));
+    }
+    // else: a re-consent that reused an existing grant — storeGoogleCredential's
+    // COALESCE keeps the stored refresh token.
+  }
+
+  try {
+    await storeGoogleCredential({
+      db,
+      tenantId,
+      secretsKey: c.env.SECRETS_KEY,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token ?? null,
+      expiresInSec: tokens.expires_in,
+      email,
+      scopes,
+    });
+  } catch (e) {
+    console.error('[oauth/google] store failed:', (e as Error).message);
+    return c.html(oauthPopupHtml({ type: 'google-oauth-error', error: 'store_failed' }));
+  }
+
+  bustConnectionCache(tenantId, GOOGLE_PLATFORM);
+  return c.html(oauthPopupHtml({ type: 'google-oauth-success', account: email, scopes }));
+});
+
+// POST /api/debug/sync-gsc — manually trigger the GSC keyword sync for the
+// tenant (X-Tenant-ID header) and report verification status. Surfaces the
+// verified-site list so an unverified property (the usual cause of a 403) is
+// obvious: the sync silently skips a site it can't read, so we diagnose it here.
+api.post('/debug/sync-gsc', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const env = c.env as unknown as MetricsEnv;
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  const clientSecret = c.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return err(c, 500, 'oauth_not_configured', 'GOOGLE_CLIENT_ID/SECRET are not set on the Worker');
+  }
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const secret = await loadSecret(db, tenantId, GOOGLE_PLATFORM, c.env.SECRETS_KEY);
+  if (!secret?.refreshToken) {
+    return err(c, 400, 'not_connected', 'Google is not connected for this tenant — connect it in Settings → Platforms first.');
+  }
+
+  // Refresh the (stale) stored access token before any API call.
+  let accessToken: string;
+  try {
+    accessToken = await refreshGoogleAccessToken({
+      db,
+      tenantId,
+      secret,
+      secretsKey: c.env.SECRETS_KEY,
+      clientId,
+      clientSecret,
+    });
+  } catch (e) {
+    return err(c, 502, 'token_refresh_failed', `${(e as Error).message} — try disconnecting and reconnecting Google.`);
+  }
+
+  // The tenant's sites and which are verified in GSC (from the /sites list).
+  const sites = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`SELECT id, domain FROM marketing.sites WHERE tenant_id = ${tenantId}`);
+    return r.rows;
+  });
+
+  let verifiedSites: Array<{ url: string; permission: string }> = [];
+  try {
+    const adapter = new GscAdapter({
+      accessToken,
+      refreshToken: secret.refreshToken,
+      extra: { clientId, clientSecret },
+    });
+    const q = await adapter.quotaState();
+    verifiedSites = (q.details.verifiedSites as Array<{ url: string; permission: string }>) ?? [];
+  } catch (e) {
+    if (e instanceof AdapterHttpError) {
+      return err(c, 502, 'gsc_error', `Search Console responded ${e.status}. Reconnect Google or check API access.`);
+    }
+    return err(c, 502, 'gsc_unreachable', `Could not reach Search Console: ${(e as Error).message}`);
+  }
+
+  // Exact match against what the sync actually queries (toGscSiteUrl → the
+  // URL-prefix form) plus the domain-property form — an unanchored substring
+  // would falsely "verify" an unrelated property like https://myapire.io/.
+  const siteStatus = sites.map((s) => {
+    const domain = String(s.domain);
+    const want = toGscSiteUrl(domain);
+    return {
+      domain,
+      verified: verifiedSites.some((v) => v.url === want || v.url === `sc-domain:${domain}`),
+    };
+  });
+  const unverified = siteStatus.filter((s) => !s.verified).map((s) => s.domain);
+
+  // Run the real sync (idempotent upsert). It logs + skips per-site failures, so
+  // the count reflects only sites it could read.
+  let synced = 0;
+  let syncError: string | null = null;
+  try {
+    synced = await syncGscKeywords(env, db, tenantId);
+  } catch (e) {
+    syncError = e instanceof Error ? e.message : String(e);
+  }
+
+  return c.json({
+    connected: true,
+    account: googleCredentialFromSecretEmail(secret),
+    verifiedSites,
+    siteStatus,
+    synced,
+    syncError,
+    ...(unverified.length
+      ? {
+          warning: `Not verified in Google Search Console: ${unverified.join(', ')}. Add the property at search.google.com/search-console (use the same Google account you connected), then re-run this sync.`,
+        }
+      : {}),
+  });
+});
+
+/** Pull the account email out of a loaded Google secret's profile map. */
+function googleCredentialFromSecretEmail(secret: { profileMap: Record<string, string> | null }): string | null {
+  const email = secret.profileMap?.email;
+  return typeof email === 'string' ? email : null;
+}
+
 // ── GET /api/connections ────────────────────────────────────────────
 api.get('/connections', async (c) => {
   const tenantId = tenantOf(c);
@@ -1131,7 +1382,7 @@ api.get('/connections', async (c) => {
 
   const rows = await withTenantDb(db, tenantId, async (tx) => {
     const r = await tx.execute<Row>(sql`
-      SELECT platform, updated_at, encrypted_access_token
+      SELECT platform, updated_at, encrypted_access_token, encrypted_profile_map, scopes
       FROM marketing.tenant_secrets
       WHERE tenant_id = ${tenantId}
     `);
@@ -1158,11 +1409,29 @@ api.get('/connections', async (c) => {
 
       // Managed/OAuth platforms: connected = a credential exists (no live call).
       if (!p.probe) {
+        // Google (OAuth): surface the stored account email + granted scopes so
+        // the card can render "Connected · email" and the active sub-services,
+        // without hitting Google on every dashboard load.
+        let account: string | null = null;
+        let scopes: string[] | undefined;
+        if (p.id === 'google' && hasCred) {
+          scopes = (row?.scopes as string[] | null) ?? [];
+          const pmCipher = (row?.encrypted_profile_map as string | null) ?? null;
+          if (pmCipher) {
+            try {
+              const pm = JSON.parse(await decryptSecret(pmCipher, key)) as { email?: string };
+              account = typeof pm.email === 'string' ? pm.email : null;
+            } catch {
+              account = null; // rotated key / malformed — still connected, no label
+            }
+          }
+        }
         return {
           ...base,
           connected: hasCred,
-          account: null,
+          account,
           lastValidated: hasCred ? lastSyncAt : null,
+          ...(scopes !== undefined ? { scopes } : {}),
         };
       }
       if (!hasCred) {
@@ -1276,7 +1545,7 @@ api.post('/connections/:platform/disconnect', async (c) => {
   const tenantId = tenantOf(c);
   if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
   const platform = c.req.param('platform').toLowerCase();
-  if (!API_KEY_PLATFORMS.has(platform)) {
+  if (!DISCONNECTABLE_PLATFORMS.has(platform)) {
     return err(c, 422, 'unsupported_platform', `${platform} cannot be disconnected here`);
   }
   const body = await c.req.json<Record<string, any>>().catch(() => null);

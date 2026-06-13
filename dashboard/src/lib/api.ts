@@ -16,7 +16,7 @@ export function setTenantId(id: string) {
 // localhost base resolves same-origin through the proxy. In production the
 // dashboard (Cloudflare Pages) and the Worker live on different origins, so the
 // build is pointed at the deployed Worker URL via VITE_API_URL (.env.production).
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8787'
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8787'
 
 export const api = axios.create({ baseURL: API_BASE_URL })
 

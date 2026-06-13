@@ -47,6 +47,9 @@ export const RECOMMENDATION_TYPES = [
   'trending_opportunity',
   'queue_health',
   'engagement_followup',
+  // SEO: a striking-distance Search Console query (rank 4-20, high impressions)
+  // not yet covered by a post. Data-gated — only surfaces when GSC is connected.
+  'seo_opportunity',
 ] as const;
 export type RecommendationType = (typeof RECOMMENDATION_TYPES)[number];
 
@@ -164,6 +167,25 @@ interface ActiveCampaign {
   goalType: string;
 }
 
+interface SeoQuery {
+  query: string;
+  impressions: number;
+  clicks: number;
+  position: number;
+}
+
+interface SeoStriking extends SeoQuery {
+  // True when an existing post already covers the query's terms — Sonnet should
+  // only recommend an seo_opportunity for UNcovered striking-distance queries.
+  isCovered: boolean;
+}
+
+interface SeoData {
+  weekOf: string | null;
+  topQueries: SeoQuery[];
+  strikingDistance: SeoStriking[];
+}
+
 interface GatheredData {
   tenantName: string;
   channelPerf: ChannelPerf[];
@@ -174,6 +196,9 @@ interface GatheredData {
   trendingBriefAgeDays: number | null;
   recentWinners: RecentWinner[];
   campaigns: ActiveCampaign[];
+  // SEO opportunities from Google Search Console — null when GSC isn't connected
+  // (or has no data yet for the tenant), in which case the SEO block is omitted.
+  seo: SeoData | null;
   totalScoredPosts: number;
 }
 
@@ -333,6 +358,26 @@ async function gatherData(db: Db, tenantId: string): Promise<GatheredData> {
       goalType: String(r.goal_type),
     }));
 
+    // 7) GSC keyword opportunities (latest synced week). Aggregated per query
+    //    across pages so the same term on several URLs counts once; min(position)
+    //    is the best rank that term holds. Empty when Google isn't connected.
+    const kwRows = await tx.execute<Record<string, any>>(sql`
+      WITH latest AS (
+        SELECT max(week_of) AS w FROM marketing.gsc_keywords WHERE tenant_id = ${tenantId}
+      )
+      SELECT k.query,
+             sum(k.impressions)::int AS impressions,
+             sum(k.clicks)::int AS clicks,
+             round(min(k.position)::numeric, 1) AS position,
+             max(k.week_of) AS week_of
+      FROM marketing.gsc_keywords k, latest
+      WHERE k.tenant_id = ${tenantId} AND k.week_of = latest.w
+      GROUP BY k.query
+      ORDER BY impressions DESC
+      LIMIT 50
+    `);
+    const seo = buildSeo(kwRows.rows, drafts);
+
     const totalScoredPosts = channelPerf.reduce((sum, c) => sum + c.scoredCount, 0);
 
     return {
@@ -345,9 +390,52 @@ async function gatherData(db: Db, tenantId: string): Promise<GatheredData> {
       trendingBriefAgeDays,
       recentWinners,
       campaigns,
+      seo,
       totalScoredPosts,
     };
   });
+}
+
+// ── SEO opportunity helpers ─────────────────────────────────────────────────────
+
+// "Striking distance" = ranks on page 2 (position 4-20) with real demand
+// (>100 weekly impressions). These are the queries one strong, targeted post can
+// push onto page 1, so they're the highest-leverage blog topics.
+const SEO_STRIKING_MIN_POSITION = 4;
+const SEO_STRIKING_MAX_POSITION = 20;
+const SEO_STRIKING_MIN_IMPRESSIONS = 100;
+
+function buildSeo(rows: Record<string, any>[], drafts: DraftTextRow[]): SeoData | null {
+  if (rows.length === 0) return null;
+  const weekOf = rows[0].week_of ? String(rows[0].week_of).slice(0, 10) : null;
+  const all: SeoQuery[] = rows.map((r) => ({
+    query: String(r.query ?? ''),
+    impressions: Number(r.impressions ?? 0),
+    clicks: Number(r.clicks ?? 0),
+    position: r.position == null ? 0 : Number(r.position),
+  }));
+
+  const strikingDistance: SeoStriking[] = all
+    .filter(
+      (k) =>
+        k.position >= SEO_STRIKING_MIN_POSITION &&
+        k.position <= SEO_STRIKING_MAX_POSITION &&
+        k.impressions > SEO_STRIKING_MIN_IMPRESSIONS,
+    )
+    .map((k) => ({ ...k, isCovered: isQueryCovered(k.query, drafts) }))
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, 5);
+
+  return { weekOf, topQueries: all.slice(0, 10), strikingDistance };
+}
+
+/** Loose coverage check: a draft already covers the query if its text contains
+ *  all the query's significant terms (or the full query when it has none). */
+function isQueryCovered(query: string, drafts: DraftTextRow[]): boolean {
+  const q = query.toLowerCase();
+  const terms = significantTerms(q);
+  if (terms.length === 0) return drafts.some((d) => d.text.includes(q));
+  return drafts.some((d) => terms.every((t) => d.text.includes(t)));
 }
 
 // ── keyword bucketing helpers ───────────────────────────────────────────────────
@@ -541,6 +629,34 @@ function buildDataContext(d: GatheredData): string {
         .join('\n')
     : '- (no active campaigns)';
 
+  // SEO block only when GSC is connected + has data; otherwise a one-line note so
+  // Sonnet knows the signal is absent (and won't invent an seo_opportunity).
+  let seoBlock: string;
+  if (d.seo && (d.seo.strikingDistance.length || d.seo.topQueries.length)) {
+    const parts: string[] = [];
+    if (d.seo.strikingDistance.length) {
+      parts.push(
+        'Striking-distance queries (rank 4-20, >100 impressions/wk — page-2 terms one strong post can lift to page 1):',
+        ...d.seo.strikingDistance.map(
+          (s) =>
+            `- "${s.query}": ${s.impressions} impressions, avg position ${s.position}, ${s.clicks} clicks — ` +
+            (s.isCovered ? 'has related content already' : 'NOT YET COVERED by a post'),
+        ),
+      );
+    }
+    if (d.seo.topQueries.length) {
+      parts.push(
+        'Top queries by impressions:',
+        ...d.seo.topQueries
+          .slice(0, 8)
+          .map((q) => `- "${q.query}": ${q.impressions} impressions, position ${q.position}`),
+      );
+    }
+    seoBlock = parts.join('\n');
+  } else {
+    seoBlock = '- (no Google Search Console data — Google not connected, or no keywords synced yet)';
+  }
+
   return [
     `CHANNEL PERFORMANCE (published/measured content):`,
     channelLines,
@@ -559,6 +675,9 @@ function buildDataContext(d: GatheredData): string {
     ``,
     `ACTIVE CAMPAIGNS:`,
     campaignLines,
+    ``,
+    `SEO OPPORTUNITIES (Google Search Console${d.seo?.weekOf ? `, week of ${d.seo.weekOf}` : ''}):`,
+    seoBlock,
   ].join('\n');
 }
 
@@ -578,6 +697,12 @@ const SYSTEM_PROMPT = (tenantName: string) =>
     `- trending_opportunity: a trending brief topic not yet covered`,
     `- queue_health: a channel is running low on approved/pending content`,
     `- engagement_followup: build on a recent high-performer (same topic)`,
+    `- seo_opportunity: a Google Search Console query with real demand (>100 impressions/wk)`,
+    `  where the brand ranks position 4-20 (page 2) and NO post targets it — one`,
+    `  authoritative blog post can move it from page 2 to page 1. Use action_type`,
+    `  "generate", channel "blog", and set action_params.topic to the exact query.`,
+    `  Only emit this when the SEO OPPORTUNITIES section lists uncovered striking-`,
+    `  distance queries; never invent one when that data is absent.`,
     ``,
     `Rules:`,
     `1. Return exactly 5 recommendations, ranked by impact (highest priority first).`,
@@ -605,7 +730,7 @@ const USER_PROMPT = (tenantName: string, dataContext: string) =>
     ``,
     `Return a JSON array with exactly 5 objects, each having:`,
     `{`,
-    `  "type": "content_gap|channel_rebalance|trending_opportunity|queue_health|engagement_followup",`,
+    `  "type": "content_gap|channel_rebalance|trending_opportunity|queue_health|engagement_followup|seo_opportunity",`,
     `  "title": "Short action title (max 60 chars)",`,
     `  "description": "1-2 sentence description of what to do and why",`,
     `  "reasoning": "The specific data point that drives this (cite the number)",`,
