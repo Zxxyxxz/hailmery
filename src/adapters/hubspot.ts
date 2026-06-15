@@ -8,7 +8,22 @@ import {
   EMPTY_METRICS,
   adapterFetch,
   authHeaders,
+  isValidEmail,
 } from './index.js';
+
+export interface ResolvedContact {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+export interface ResolvedContactList {
+  contacts: ResolvedContact[];
+  // True when more mailable contacts existed than were returned (the cap was hit,
+  // or the provider hard-limited the page). Lets callers surface a real "list
+  // truncated" signal instead of inferring it from `contacts.length === cap`.
+  truncated: boolean;
+}
 
 const BASE = 'https://api.hubapi.com';
 
@@ -205,4 +220,57 @@ export async function getContactByEmail(
   };
 
   return data.results[0]?.id ?? null;
+}
+
+/**
+ * Resolve a tenant's full HubSpot contact list into a concrete recipient array
+ * for an email send. Walks the contacts API via the paging cursor, then:
+ *   - drops contacts with no / malformed email,
+ *   - drops anyone with hs_email_optout='true' (compliance — opted-out contacts
+ *     must never be emailed),
+ *   - de-dupes by lowercased email,
+ *   - hard-stops at `limit` (default 500) as a send-safety cap.
+ * Returns at most `limit` contacts plus a `truncated` flag set ONLY when a
+ * genuine (cap+1)th mailable contact exists — so a tenant with exactly `limit`
+ * contacts is not mislabelled as truncated. A warning is logged (no email
+ * addresses) when truncation happens so a partial send is never silent.
+ */
+export async function getAllContacts(
+  accessToken: string,
+  options?: { limit?: number },
+): Promise<ResolvedContactList> {
+  const cap = options?.limit ?? 500;
+  const adapter = new HubSpotAdapter({ accessToken, extra: {} });
+
+  const contacts: ResolvedContact[] = [];
+  const seen = new Set<string>();
+  let after: string | undefined;
+  let truncated = false;
+
+  do {
+    const page = await adapter.getContacts({ after, limit: 100 });
+    for (const c of page.contacts) {
+      if (c.hs_email_optout === 'true') continue; // never email opted-out contacts
+      const email = c.email?.trim().toLowerCase();
+      if (!email || !isValidEmail(email) || seen.has(email)) continue;
+      // We already have `cap` recipients and just found another mailable one —
+      // the list is genuinely larger than the cap. Stop and flag it.
+      if (contacts.length >= cap) {
+        truncated = true;
+        break;
+      }
+      seen.add(email);
+      contacts.push({
+        email,
+        firstName: c.firstname || undefined,
+        lastName: c.lastname || undefined,
+      });
+    }
+    after = page.nextCursor;
+  } while (after && !truncated);
+
+  if (truncated) {
+    console.warn(`[hubspot] contact list truncated at cap ${cap} — more mailable contacts exist`);
+  }
+  return { contacts, truncated };
 }

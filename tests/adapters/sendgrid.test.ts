@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   SendGridAdapter,
   handleSendGridWebhook,
+  getAllSendGridContacts,
   type SendGridCredentials,
   type SendGridEvent,
 } from '../../src/adapters/sendgrid.js';
@@ -75,12 +76,53 @@ describe('SendGridAdapter', () => {
 
       const body = JSON.parse(init.body as string);
       expect(body.subject).toBe('NIS2 Update');
-      expect(body.content[0].value).toContain('utm_source=hailmery');
-      expect(body.content[0].value).toContain('utm_medium=email');
-      expect(body.content[0].value).toContain('utm_campaign=nis2-launch');
+
+      // Both MIME parts are sent, text/plain BEFORE text/html (SendGrid order).
+      expect(body.content[0].type).toBe('text/plain');
+      expect(body.content[1].type).toBe('text/html');
+      const htmlPart = (body.content as Array<{ type: string; value: string }>).find(
+        (p) => p.type === 'text/html',
+      )!;
+      expect(htmlPart.value).toContain('utm_source=hailmery');
+      expect(htmlPart.value).toContain('utm_medium=email');
+      expect(htmlPart.value).toContain('utm_campaign=nis2-launch');
+
+      // Message-level custom_args carry the draft attribution the webhook reads.
       expect(body.custom_args.draft_id).toBe('draft-1');
+      // Per-recipient custom_args identify who opened/clicked.
+      expect(body.personalizations[0].custom_args.recipient_email).toBe('ben@acme.com');
+      expect(body.personalizations[0].to[0].name).toBe('Ben');
 
       expect(result.externalId).toBe('msg-xyz');
+    });
+
+    it('throws when no recipients were resolved', async () => {
+      const base = makeDraft().payload as Record<string, unknown>;
+      await expect(
+        adapter.publish(makeDraft({ payload: { ...base, to_list: [] } } as never)),
+      ).rejects.toThrow('recipient list is empty');
+    });
+
+    it('derives a plain-text part and composes name from firstName/lastName', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({}, 202, { 'X-Message-Id': 'msg-2' }),
+      );
+      const base = makeDraft().payload as Record<string, unknown>;
+      await adapter.publish(
+        makeDraft({
+          payload: {
+            ...base,
+            plain_text: undefined,
+            to_list: [{ email: 'jo@acme.com', firstName: 'Jo', lastName: 'Lee' }],
+          },
+        } as never),
+      );
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(init.body as string);
+      // Stripped HTML → plain text, no tags.
+      expect(body.content[0].value).not.toContain('<');
+      expect(body.content[0].value.toLowerCase()).toContain('hello');
+      expect(body.personalizations[0].to[0].name).toBe('Jo Lee');
     });
   });
 
@@ -154,6 +196,45 @@ describe('SendGridAdapter', () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({}, 500));
       await expect(adapter.publish(makeDraft())).rejects.toThrow('HTTP 500');
     });
+  });
+});
+
+describe('getAllSendGridContacts', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('parses, filters invalid, de-dupes; truncated=false when count matches', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        contact_count: 2,
+        result: [
+          { email: 'a@b.com', first_name: 'A' },
+          { email: 'bad-email' }, // invalid: dropped
+          { email: 'A@b.com' }, // duplicate (case-insensitive)
+          { email: 'c@b.com', last_name: 'Cee' },
+        ],
+      }),
+    );
+
+    const { contacts, truncated } = await getAllSendGridContacts('key');
+
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.sendgrid.com/v3/marketing/contacts/search');
+    expect(init.method).toBe('POST');
+    expect(contacts.map((c) => c.email)).toEqual(['a@b.com', 'c@b.com']);
+    expect(contacts[1].lastName).toBe('Cee');
+    expect(truncated).toBe(false);
+  });
+
+  it('flags truncated when contact_count exceeds the returned page (SendGrid 50-cap)', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        contact_count: 200,
+        result: [{ email: 'a@b.com' }, { email: 'c@b.com' }],
+      }),
+    );
+    const { contacts, truncated } = await getAllSendGridContacts('key');
+    expect(contacts).toHaveLength(2);
+    expect(truncated).toBe(true);
   });
 });
 

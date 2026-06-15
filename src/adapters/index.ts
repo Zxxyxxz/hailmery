@@ -79,6 +79,14 @@ export function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
+// Pragmatic RFC-5322-lite check — rejects obviously-bad addresses (no `@`, no
+// domain dot, embedded whitespace) before they reach a send/contact list. Not a
+// full validator; the provider does the authoritative check at send time.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export function isValidEmail(email: string): boolean {
+  return EMAIL_RE.test(email);
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Re-exports — import any adapter from `@/adapters`
 // ──────────────────────────────────────────────────────────────────
@@ -89,16 +97,18 @@ export type { BufferCredentials } from './buffer.js';
 export { WixBlogAdapter } from './wix-blog.js';
 export type { WixBlogCredentials } from './wix-blog.js';
 
-export { HubSpotAdapter, getContactByEmail } from './hubspot.js';
+export { HubSpotAdapter, getContactByEmail, getAllContacts } from './hubspot.js';
 export type {
   HubSpotCredentials,
   HubSpotContact,
   HubSpotContactsResult,
   HubSpotEventType,
   HubSpotTimelineEvent,
+  ResolvedContact,
+  ResolvedContactList,
 } from './hubspot.js';
 
-export { SendGridAdapter, handleSendGridWebhook } from './sendgrid.js';
+export { SendGridAdapter, handleSendGridWebhook, getAllSendGridContacts } from './sendgrid.js';
 export type {
   SendGridCredentials,
   SendGridMailPayload,

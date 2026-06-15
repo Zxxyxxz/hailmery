@@ -15,6 +15,7 @@ import { makeDb } from '../db/client.js';
 import { withTenantDb, assertUuid, findFirstSiteForTenant, loadPlatformToken } from '../lib/tenant.js';
 import { encryptSecret, decryptSecret } from '../lib/secrets.js';
 import { loadSecret, loadProfileMap } from '../lib/credentials.js';
+import { resolveEmailRecipients } from '../services/recipients.js';
 import { brandGuardian } from '../agents/guardian.js';
 import { runGenerationPipeline } from '../workflows/generation.js';
 import { publishSingleDraft } from '../workflows/publish.js';
@@ -365,6 +366,68 @@ api.patch('/drafts/:id', async (c) => {
   });
 
   return c.json({ draft: normalizeDraft(updated) });
+});
+
+// ── GET /api/drafts/:id/preview ─────────────────────────────────────
+// Email-draft send preview: returns the subject/sender/body plus the resolved
+// recipient COUNT (it resolves the list from HubSpot/SendGrid contacts but never
+// sends). The dashboard shows "This email will send to N contacts" before the
+// operator clicks Publish. A resolution failure (platform not connected, no
+// contacts) returns 200 with recipientCount=null and a human listError so the
+// card can surface the problem instead of erroring out.
+
+api.get('/drafts/:id/preview', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const id = c.req.param('id');
+  try {
+    assertUuid(id, 'id');
+  } catch {
+    return err(c, 422, 'bad_id', 'draft id must be a UUID');
+  }
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const draft = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT id, channel, payload FROM marketing.content_drafts
+      WHERE id = ${id} AND tenant_id = ${tenantId} LIMIT 1
+    `);
+    return r.rows[0] ?? null;
+  });
+  if (!draft) return err(c, 404, 'not_found', 'Draft not found');
+  if (draft.channel !== 'email')
+    return err(c, 422, 'bad_channel', 'Preview is only available for email drafts');
+
+  const payload = (draft.payload ?? {}) as Record<string, any>;
+
+  let recipientCount: number | null = null;
+  let capped = false;
+  let listError: string | null = null;
+  try {
+    const resolved = await resolveEmailRecipients({
+      db,
+      tenantId,
+      secretsKey: c.env.SECRETS_KEY,
+      payload,
+    });
+    recipientCount = resolved.recipients.length;
+    capped = resolved.capped;
+  } catch (e) {
+    listError = e instanceof Error ? e.message : String(e);
+  }
+
+  return c.json({
+    subject: payload.subject ?? null,
+    htmlBody: payload.html_body ?? null,
+    fromEmail: payload.from_email ?? null,
+    fromName: payload.from_name ?? null,
+    emailType: payload.emailType ?? null,
+    listSource: payload.list_source ?? null,
+    recipientCount,
+    capped,
+    listError,
+    previewOnly: true,
+  });
 });
 
 // ── GET /api/campaigns ──────────────────────────────────────────────

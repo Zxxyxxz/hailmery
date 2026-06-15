@@ -15,6 +15,7 @@ import type {
   DocumentRow,
   DomainAuth,
   Draft,
+  DraftPreview,
   DraftStatus,
   GenerateNowInput,
   GenerateNowResult,
@@ -76,6 +77,24 @@ export function usePatchDraft() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drafts', currentId] })
       qc.invalidateQueries({ queryKey: ['campaigns', currentId] })
+    },
+  })
+}
+
+/**
+ * Email-draft send preview — the resolved recipient count + sender, shown on the
+ * card before Publish. Resolution hits HubSpot/SendGrid server-side and is cached
+ * 5 min; enable it only for email drafts so non-email cards don't fetch.
+ */
+export function useDraftPreview(draftId: string, enabled: boolean) {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['draft-preview', currentId, draftId],
+    enabled: enabled && !!currentId && !!draftId,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const res = await api.get<DraftPreview>(`/api/drafts/${draftId}/preview`)
+      return res.data
     },
   })
 }

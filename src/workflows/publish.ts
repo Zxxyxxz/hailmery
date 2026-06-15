@@ -18,6 +18,7 @@ import type { ContentDraft } from '../db/schema.js';
 import { makeDb } from '../db/client.js';
 import { withTenantDb } from '../lib/tenant.js';
 import { resolveAdapter, channelToSecretPlatform, normalizeChannel, loadSecret } from '../lib/credentials.js';
+import { resolveEmailRecipients, RecipientResolutionError } from '../services/recipients.js';
 import { generateImage } from '../generation/image.js';
 import { mirrorEnvToProcess, type PipelineEnv, type PublishParams } from './types.js';
 
@@ -257,13 +258,50 @@ export async function publishDraft(env: PipelineEnv, draft: DueDraft): Promise<P
     return { draftId: draft.id, channel: draft.channel, status: 'failed', error: resolved.reason };
   }
 
+  // Email channel: resolve the recipient list HERE (the adapter is credential-
+  // pure and cannot read the DB). list_source → concrete payload.to_list, pulled
+  // from HubSpot / SendGrid contacts, capped for safety. Only run when there's an
+  // html_body to send and no explicit list was pre-set (e.g. a drip's per-email
+  // bodies live in `sequence`, not html_body — single-send of those is V2). A
+  // resolution failure (not connected / no contacts) fails the draft with a
+  // clear, operator-facing reason rather than crashing.
+  let payload = draft.payload;
+  if (channelToSecretPlatform(draft.channel) === 'sendgrid' && draft.payload?.html_body) {
+    const hasExplicit = Array.isArray(draft.payload.to_list) && draft.payload.to_list.length > 0;
+    if (!hasExplicit) {
+      try {
+        const resolvedList = await resolveEmailRecipients({
+          db,
+          tenantId: draft.tenantId,
+          secretsKey: env.SECRETS_KEY,
+          payload: draft.payload,
+        });
+        payload = { ...draft.payload, to_list: resolvedList.recipients };
+        console.log(
+          `[publish] email ${draft.id}: resolved ${resolvedList.recipients.length} recipient(s) from ${resolvedList.source}${resolvedList.capped ? ' (capped)' : ''}`,
+        );
+      } catch (err) {
+        const reason =
+          err instanceof RecipientResolutionError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : String(err);
+        await markFailed(db, draft, reason);
+        return { draftId: draft.id, channel: draft.channel, status: 'failed', error: reason };
+      }
+    }
+  }
+
   // The adapter reads draft.channel + draft.payload. Normalise the channel
-  // (x → twitter) so the Buffer profile lookup keys line up.
+  // (x → twitter) so the Buffer profile lookup keys line up. campaignId is passed
+  // through so UTM (utm_campaign) + custom_args (campaign_id) attribute correctly.
   const draftForAdapter = {
     id: draft.id,
     tenantId: draft.tenantId,
+    campaignId: draft.campaignId,
     channel: normalizeChannel(draft.channel),
-    payload: draft.payload,
+    payload,
     assets: draft.assets,
     publishAt: draft.publishAt,
   } as unknown as ContentDraft;

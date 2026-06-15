@@ -10,6 +10,7 @@ import {
   Save,
   Send,
   AlertTriangle,
+  Users,
 } from 'lucide-react'
 import type { Draft } from '@/lib/types'
 import { channelMeta } from '@/lib/channels'
@@ -21,7 +22,7 @@ import {
   fromDatetimeLocal,
   toDatetimeLocal,
 } from '@/lib/format'
-import { usePatchDraft, usePublishNow } from '@/lib/queries'
+import { useDraftPreview, usePatchDraft, usePublishNow } from '@/lib/queries'
 import { toApiError } from '@/lib/api'
 import type { ToastState } from '@/components/ui/toast'
 import { ChannelIcon } from './ChannelIcon'
@@ -501,6 +502,54 @@ export function DraftCard({
   )
 }
 
+const LIST_SOURCE_LABEL: Record<string, string> = {
+  hubspot_all: 'HubSpot',
+  sendgrid_all: 'SendGrid',
+}
+
+// Resolved recipient count for an email draft, shown before Publish so the
+// operator knows how many people this send reaches. Resolution can fail (platform
+// not connected / no contacts) — we surface that inline instead of hiding it.
+// `enabled` gates the (server-side, contact-walking) fetch to the moment it
+// matters — an approved draft about to be published — so merely viewing a queue
+// of pending drafts doesn't trigger a contact-list resolution per card.
+function EmailRecipients({ draftId, enabled }: { draftId: string; enabled: boolean }) {
+  const { data, isLoading, isError } = useDraftPreview(draftId, enabled)
+
+  if (!enabled) return null
+  if (isLoading) {
+    return (
+      <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Resolving recipients…
+      </div>
+    )
+  }
+
+  const problem = isError ? 'Could not load recipient list' : data?.listError
+  if (problem || !data || data.recipientCount == null) {
+    return (
+      <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-300/90">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span className="break-words">{problem ?? 'No recipients resolved'}</span>
+      </div>
+    )
+  }
+
+  const source = data.listSource ? LIST_SOURCE_LABEL[data.listSource] : null
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+      <Users className="h-3.5 w-3.5 text-gray-500" />
+      <span>
+        {data.recipientCount.toLocaleString()}{' '}
+        {data.recipientCount === 1 ? 'contact' : 'contacts'}
+        {source ? ` (from ${source})` : ''}
+        {data.capped ? ' · capped for safety' : ''}
+      </span>
+    </div>
+  )
+}
+
 function PreviewBody({
   draft,
   expanded,
@@ -558,6 +607,7 @@ function PreviewBody({
             {draft.payload.previewText}
           </p>
         )}
+        <EmailRecipients draftId={draft.id} enabled={draft.status === 'approved'} />
       </div>
     )
   }

@@ -98,6 +98,23 @@ export interface PublishNowResult {
   error: string | null
 }
 
+/** Response from GET /api/drafts/:id/preview (email drafts only). */
+export interface DraftPreview {
+  subject: string | null
+  htmlBody: string | null
+  fromEmail: string | null
+  fromName: string | null
+  emailType: string | null
+  listSource: 'hubspot_all' | 'sendgrid_all' | null
+  /** Number of contacts this email will send to, or null if resolution failed. */
+  recipientCount: number | null
+  /** True when the list was truncated to the safety cap. */
+  capped: boolean
+  /** Human-readable reason the recipient list couldn't be resolved, else null. */
+  listError: string | null
+  previewOnly: boolean
+}
+
 export interface DraftCounts {
   pending: number
   approved: number

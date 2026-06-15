@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   HubSpotAdapter,
   getContactByEmail,
+  getAllContacts,
   type HubSpotCredentials,
 } from '../../src/adapters/hubspot.js';
 import type { ContentDraft } from '../../src/db/schema.js';
@@ -160,5 +161,70 @@ describe('getContactByEmail', () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ results: [] }));
     const id = await getContactByEmail('tok', 'nobody@example.com');
     expect(id).toBeNull();
+  });
+});
+
+describe('getAllContacts', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function page(
+    contacts: Array<Record<string, string>>,
+    after?: string,
+  ) {
+    return jsonResponse({
+      results: contacts.map((properties, i) => ({ id: `id-${i}`, properties })),
+      paging: after ? { next: { after } } : undefined,
+    });
+  }
+
+  it('excludes opted-out + invalid emails, de-dupes, and follows the paging cursor', async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        page(
+          [
+            { email: 'keep@a.com', firstname: 'Keep', lastname: 'One' },
+            { email: 'optout@a.com', hs_email_optout: 'true' }, // compliance: must be dropped
+            { email: 'not-an-email' }, // invalid: must be dropped
+          ],
+          'cursor-2',
+        ),
+      )
+      .mockResolvedValueOnce(
+        page([
+          { email: 'KEEP@a.com' }, // duplicate (case-insensitive)
+          { email: 'second@a.com', firstname: 'Sec' },
+        ]),
+      );
+
+    const { contacts, truncated } = await getAllContacts('tok');
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(contacts.map((c) => c.email)).toEqual(['keep@a.com', 'second@a.com']);
+    expect(contacts[0].firstName).toBe('Keep');
+    expect(truncated).toBe(false);
+  });
+
+  it('never emails an opted-out contact even if it is the only one', async () => {
+    mockFetch.mockResolvedValueOnce(
+      page([{ email: 'optout@a.com', hs_email_optout: 'true' }]),
+    );
+    const { contacts } = await getAllContacts('tok');
+    expect(contacts).toHaveLength(0);
+  });
+
+  it('caps at the limit and flags truncated when more mailable contacts exist', async () => {
+    mockFetch.mockResolvedValueOnce(
+      page([{ email: 'a@x.com' }, { email: 'b@x.com' }, { email: 'c@x.com' }]),
+    );
+    const { contacts, truncated } = await getAllContacts('tok', { limit: 2 });
+    expect(contacts).toHaveLength(2);
+    expect(truncated).toBe(true);
+  });
+
+  it('does NOT flag truncated when the count exactly equals the cap', async () => {
+    mockFetch.mockResolvedValueOnce(page([{ email: 'a@x.com' }, { email: 'b@x.com' }]));
+    const { contacts, truncated } = await getAllContacts('tok', { limit: 2 });
+    expect(contacts).toHaveLength(2);
+    expect(truncated).toBe(false);
   });
 });

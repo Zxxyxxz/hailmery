@@ -223,6 +223,7 @@ export async function generateEmail(opts: {
       html: newsletter.htmlBody,
       // Fields SendGridAdapter.publish() (SendGridMailPayload) reads at send time.
       html_body: newsletter.htmlBody,
+      plain_text: newsletter.plainText,
       from_email: delivery.fromEmail,
       from_name: delivery.fromName,
       list_source: delivery.listSource ?? undefined,

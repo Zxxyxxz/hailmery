@@ -8,7 +8,9 @@ import {
   EMPTY_METRICS,
   adapterFetch,
   authHeaders,
+  isValidEmail,
 } from './index.js';
+import type { ResolvedContact, ResolvedContactList } from './hubspot.js';
 
 const BASE = 'https://api.sendgrid.com/v3';
 
@@ -17,12 +19,18 @@ export interface SendGridCredentials extends AdapterCredentials {}
 export interface SendGridMailPayload {
   subject: string;
   html_body: string;
+  // Optional plain-text alternative. When absent the adapter derives one from
+  // html_body (a text/plain part materially improves deliverability + spam
+  // scoring, so we always send both).
+  plain_text?: string;
   from_email: string;
   from_name: string;
-  // Optional explicit recipient list (a test send, or a pre-resolved audience).
-  // When absent, list_source marks where the adapter should pull recipients from
-  // at send time.
-  to_list?: Array<{ email: string; name?: string }>;
+  // The recipient list. The publish workflow resolves list_source into a concrete
+  // to_list (from HubSpot/SendGrid contacts) before this adapter runs, because the
+  // adapter is credential-pure and has no DB access. An explicit to_list also
+  // covers test sends / pre-resolved audiences. Each entry may carry a display
+  // name directly, or firstName/lastName the adapter composes into one.
+  to_list?: Array<{ email: string; name?: string; firstName?: string; lastName?: string }>;
   list_source?: 'hubspot_all' | 'sendgrid_all';
   utm_campaign?: string;
   utm_content?: string;
@@ -73,16 +81,15 @@ export class SendGridAdapter implements ChannelAdapter {
       throw new Error('Email draft has no html_body to send');
     }
 
-    // Resolve recipients. An explicit to_list wins (a test send, or a
-    // pre-resolved audience). Otherwise list_source marks WHERE the recipients
-    // should come from — but resolving a full contact list from the connected
-    // source (HubSpot all-contacts / a SendGrid list) is not wired yet.
-    // TODO(V2): when to_list is empty, resolve payload.list_source into a concrete
-    // recipient list here instead of refusing the send.
+    // Recipients are resolved UPSTREAM: the publish workflow turns list_source
+    // (hubspot_all / sendgrid_all) into a concrete payload.to_list before calling
+    // this adapter, because the adapter is credential-pure and cannot read the DB.
+    // An explicit to_list also covers test sends / pre-resolved audiences. If it's
+    // still empty here, the upstream resolver found no contacts.
     const recipients = Array.isArray(payload.to_list) ? payload.to_list : [];
     if (recipients.length === 0) {
       throw new Error(
-        'Email recipient list not yet configured — connect HubSpot or set a SendGrid list',
+        'Email recipient list is empty — no contacts resolved from HubSpot/SendGrid for this send',
       );
     }
 
@@ -91,20 +98,35 @@ export class SendGridAdapter implements ChannelAdapter {
       payload.utm_campaign ?? draft.campaignId ?? '',
       payload.utm_content ?? draft.id,
     );
+    const plainText = payload.plain_text?.trim() || htmlToPlainText(payload.html_body);
 
-    const personalizations = recipients.map((to) => ({
-      to: [{ email: to.email, name: to.name }],
-    }));
+    const personalizations = recipients.map((to) => {
+      const name =
+        to.name ?? ([to.firstName, to.lastName].filter(Boolean).join(' ').trim() || undefined);
+      return {
+        to: [{ email: to.email, name }],
+        // Per-recipient attribution. SendGrid merges these with the message-level
+        // custom_args below, so every webhook event still carries draft_id/
+        // tenant_id; recipient_email additionally identifies WHO opened/clicked.
+        custom_args: { recipient_email: to.email },
+      };
+    });
 
     const body = {
       personalizations,
       from: { email: payload.from_email, name: payload.from_name },
       subject: payload.subject,
-      content: [{ type: 'text/html', value: htmlWithUtm }],
+      // SendGrid requires text/plain BEFORE text/html when both are present.
+      content: [
+        { type: 'text/plain', value: plainText },
+        { type: 'text/html', value: htmlWithUtm },
+      ],
       tracking_settings: {
         click_tracking: { enable: true },
         open_tracking: { enable: true },
       },
+      // Message-level args propagate to every recipient's events — this is what
+      // the SendGrid webhook reads to attribute opens/clicks back to the draft.
       custom_args: {
         draft_id: draft.id,
         campaign_id: draft.campaignId ?? '',
@@ -212,6 +234,80 @@ export class SendGridAdapter implements ChannelAdapter {
       },
     };
   }
+}
+
+/**
+ * Resolve a tenant's SendGrid marketing contacts into a recipient array — the
+ * FALLBACK when HubSpot isn't connected (HubSpot is the system of record).
+ *
+ * SendGrid has no cursor to walk ALL contacts: the Search endpoint hard-limits
+ * to the first 50 matches plus the total contact_count, and a full export is an
+ * async job (V2). For a fallback aimed at small / test lists this page is
+ * sufficient. `truncated` is set whenever contact_count exceeds what we returned
+ * (the 50 ceiling OR the `limit` cap), so callers surface a real partial-list
+ * signal instead of showing "50 contacts" as if it were the whole audience.
+ */
+export async function getAllSendGridContacts(
+  apiKey: string,
+  options?: { limit?: number },
+): Promise<ResolvedContactList> {
+  const cap = options?.limit ?? 500;
+
+  const res = await adapterFetch(`${BASE}/marketing/contacts/search`, {
+    method: 'POST',
+    headers: authHeaders(apiKey),
+    body: JSON.stringify({ query: "email LIKE '%@%'" }),
+  });
+
+  const data = (await res.json()) as {
+    contact_count?: number;
+    result?: Array<{ email?: string; first_name?: string; last_name?: string }>;
+  };
+
+  const contacts: ResolvedContact[] = [];
+  const seen = new Set<string>();
+  for (const c of data.result ?? []) {
+    const email = c.email?.trim().toLowerCase();
+    if (!email || !isValidEmail(email) || seen.has(email)) continue;
+    if (contacts.length >= cap) break;
+    seen.add(email);
+    contacts.push({
+      email,
+      firstName: c.first_name || undefined,
+      lastName: c.last_name || undefined,
+    });
+  }
+
+  const total = data.contact_count ?? contacts.length;
+  const truncated = total > contacts.length;
+  if (truncated) {
+    console.warn(
+      `[sendgrid] resolved ${contacts.length} of ${total} contacts (search returns a partial page; connect HubSpot or use a contact export for the full list)`,
+    );
+  }
+  return { contacts, truncated };
+}
+
+// Derive a plain-text alternative from the HTML body. Not a full HTML→text
+// renderer — it strips tags, turns block-level closes into newlines, decodes the
+// handful of entities our generated emails use, and collapses whitespace. Good
+// enough for the text/plain MIME part (deliverability), never shown as content.
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr|table|section|header|footer)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
 }
 
 function injectUtmParams(
