@@ -168,6 +168,9 @@ export interface PlatformConnection {
   domain?: string | null
   domainRegistered?: boolean
   domainVerified?: boolean
+  // Buffer only — decrypted channel→id map (e.g. { linkedin: '...' }) so the
+  // connect modal can show what's already mapped when reconnecting.
+  profileMap?: Record<string, string>
 }
 
 /** Response from POST /api/connections/:platform/connect. */

@@ -14,7 +14,7 @@ import { sql } from 'drizzle-orm';
 import { makeDb } from '../db/client.js';
 import { withTenantDb, assertUuid, findFirstSiteForTenant, loadPlatformToken } from '../lib/tenant.js';
 import { encryptSecret, decryptSecret } from '../lib/secrets.js';
-import { loadSecret } from '../lib/credentials.js';
+import { loadSecret, loadProfileMap } from '../lib/credentials.js';
 import { brandGuardian } from '../agents/guardian.js';
 import { runGenerationPipeline } from '../workflows/generation.js';
 import { publishSingleDraft } from '../workflows/publish.js';
@@ -1400,11 +1400,26 @@ api.get('/connections', async (c) => {
       const cipher = (row?.encrypted_access_token as string | null) ?? null;
       const hasCred = !!cipher;
       const lastSyncAt = (row?.updated_at as string | null) ?? null;
+      // Surface Buffer's channel→id map so the connect modal can show what's
+      // already mapped. Decrypted here because the row carries it whether or not
+      // a token is currently present (the map survives a disconnect).
+      let profileMap: Record<string, string> | undefined;
+      if (p.id === 'buffer') {
+        const pmCipher = (row?.encrypted_profile_map as string | null) ?? null;
+        if (pmCipher) {
+          try {
+            profileMap = JSON.parse(await decryptSecret(pmCipher, key));
+          } catch {
+            profileMap = undefined; // rotated key / malformed — omit
+          }
+        }
+      }
       const base = {
         platform: p.id,
         connectionType: p.type,
         canConnect: p.canConnect,
         lastSyncAt,
+        ...(profileMap ? { profileMap } : {}),
       };
 
       // Managed/OAuth platforms: connected = a credential exists (no live call).
@@ -1516,8 +1531,10 @@ api.post('/connections/:platform/connect', async (c) => {
       if (typeof v === 'string' && v.trim()) clean[k.toLowerCase().trim()] = v.trim();
     }
     if (Object.keys(clean).length) {
-      const existing = await loadSecret(db, tenantId, 'buffer', key);
-      const merged = { ...(existing?.profileMap ?? {}), ...clean };
+      // Read the map directly (not loadSecret) so it survives a reconnect right
+      // after a disconnect, when the access token has been cleared.
+      const existing = await loadProfileMap(db, tenantId, 'buffer', key);
+      const merged = { ...(existing ?? {}), ...clean };
       profileMapCipher = await encryptSecret(JSON.stringify(merged), key);
     }
   }
@@ -1553,9 +1570,20 @@ api.post('/connections/:platform/disconnect', async (c) => {
     return err(c, 400, 'confirmation_required', 'Set confirm:true to disconnect');
   }
   const db = makeDb(c.env.DATABASE_URL);
+  // Clear the credential but PRESERVE encrypted_profile_map. The map is
+  // non-secret channel→id config (Buffer); deleting the whole row here used to
+  // wipe the LinkedIn channel mapping, so a later reconnect (api key only) came
+  // back with no targets and publishes failed with "No Buffer channel/profile id
+  // mapped". Nulling just the token marks the platform disconnected (connected =
+  // a token exists) while the mapping survives for the next reconnect.
   await withTenantDb(db, tenantId, async (tx) => {
     await tx.execute(sql`
-      DELETE FROM marketing.tenant_secrets
+      UPDATE marketing.tenant_secrets
+      SET encrypted_access_token = NULL,
+          encrypted_refresh_token = NULL,
+          token_expires_at = NULL,
+          scopes = NULL,
+          updated_at = now()
       WHERE tenant_id = ${tenantId} AND platform = ${platform}
     `);
   });

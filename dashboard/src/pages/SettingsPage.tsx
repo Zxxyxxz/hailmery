@@ -197,13 +197,6 @@ function BrandVoiceTab() {
 
 // ── Tab 2 — Connected Platforms ─────────────────────────────────────
 
-// Example keys for the connect modal's input placeholder (shape only — not real).
-const KEY_PLACEHOLDER: Record<string, string> = {
-  buffer: '1/0123456789abcdef…',
-  hubspot: 'pat-na1-xxxxxxxx-xxxx-…',
-  sendgrid: 'SG.xxxxxxxxxxxxxxxxxxxxxx…',
-}
-
 // Friendly text for the error codes the OAuth callback posts back.
 const OAUTH_ERROR_LABELS: Record<string, string> = {
   access_denied: 'you cancelled the Google consent screen',
@@ -330,6 +323,7 @@ function PlatformsTab() {
       {connectDef && (
         <ConnectModal
           def={connectDef}
+          status={byId.get(connectDef.id)}
           onClose={() => setConnectId(null)}
           onConnected={(msg) => setToast({ message: msg })}
         />
@@ -355,6 +349,75 @@ const GOOGLE_SERVICE_SCOPE: Record<string, string> = {
 function isServiceActive(service: string, scopes?: string[]): boolean {
   const needle = GOOGLE_SERVICE_SCOPE[service]
   return !!needle && !!scopes?.some((s) => s.includes(needle))
+}
+
+// OAuth (Google) guidance shown on the card: full how-to + scopes before connect,
+// scopes-lit "active services" once connected.
+function OAuthGuidance({
+  help,
+  connected,
+  scopes,
+}: {
+  help: NonNullable<PlatformDef['oauthHelp']>
+  connected: boolean
+  scopes?: string[]
+}) {
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+      {!connected && (
+        <>
+          <div>
+            <div className="text-[11px] font-medium text-gray-300">{help.title}</div>
+            <p className="mt-0.5 text-xs text-gray-500">{help.description}</p>
+          </div>
+          {help.important && (
+            <div className="rounded-md border border-blue-500/25 bg-blue-500/[0.06] px-2.5 py-2 text-xs text-blue-200">
+              {help.important}
+            </div>
+          )}
+          <ol className="list-decimal space-y-0.5 pl-4 text-xs text-gray-500">
+            {help.steps.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+        </>
+      )}
+      {help.scopes && help.scopes.length > 0 && (
+        <div>
+          <div className="mb-1 text-[11px] font-medium text-gray-500">
+            {connected ? 'Active services' : 'This connects'}
+          </div>
+          <div className="space-y-1">
+            {help.scopes.map((svc) => {
+              const active = connected && isServiceActive(svc.name, scopes)
+              return (
+                <div
+                  key={svc.name}
+                  className={`flex items-start gap-1.5 text-xs ${
+                    active ? 'text-emerald-300' : 'text-gray-500'
+                  }`}
+                >
+                  {active ? (
+                    <Check className="mt-0.5 h-3 w-3 shrink-0" />
+                  ) : (
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-600" />
+                  )}
+                  <span>
+                    <span className="text-gray-300">{svc.name}</span>
+                    <span className="text-gray-600"> — {svc.description}</span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      {!connected && help.gscSetupNote && <p className="text-xs text-gray-600">{help.gscSetupNote}</p>}
+      {!connected && help.testingNote && (
+        <p className="text-xs text-amber-300/80">{help.testingNote}</p>
+      )}
+    </div>
+  )
 }
 
 function PlatformRow({
@@ -389,7 +452,7 @@ function PlatformRow({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-gray-200">{def.name}</span>
-              {!def.available && (
+              {!def.available && !connected && (
                 <Badge variant="gray" className="gap-1">
                   <Lock className="h-3 w-3" /> Coming soon
                 </Badge>
@@ -494,30 +557,39 @@ function PlatformRow({
         </div>
       )}
 
-      {/* OAuth (Google) sub-services — lit green for the scopes actually granted */}
-      {def.connectionType === 'oauth' && def.oauthServices && def.oauthServices.length > 0 && (
-        <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-          <div className="mb-1.5 text-[11px] font-medium text-gray-500">
-            {connected ? 'Active services' : 'This connects'}
+      {/* Domain-auth explainer (SendGrid) — shown proactively, no click required. */}
+      {def.domainAuthHelp && (
+        <details className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-xs">
+          <summary className="cursor-pointer select-none font-medium text-gray-400">
+            📧 About domain authentication
+          </summary>
+          <div className="mt-2 space-y-2 text-gray-500">
+            <div className="font-medium text-gray-400">{def.domainAuthHelp.title}</div>
+            <p>{def.domainAuthHelp.description}</p>
+            <ol className="list-decimal space-y-0.5 pl-4">
+              {def.domainAuthHelp.steps.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ol>
+            {def.domainAuthHelp.cloudflareNote && (
+              <p className="text-gray-600">Cloudflare: {def.domainAuthHelp.cloudflareNote}</p>
+            )}
+            {def.domainAuthHelp.propagationNote && (
+              <p className="text-gray-600">{def.domainAuthHelp.propagationNote}</p>
+            )}
           </div>
-          <div className="space-y-1">
-            {def.oauthServices.map((svc) => {
-              const active = connected && isServiceActive(svc, status?.scopes)
-              return (
-                <div
-                  key={svc}
-                  className={`flex items-center gap-1.5 text-xs ${active ? 'text-emerald-300' : 'text-gray-500'}`}
-                >
-                  {active ? (
-                    <Check className="h-3 w-3 shrink-0" />
-                  ) : (
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-600" />
-                  )}
-                  {svc}
-                </div>
-              )
-            })}
-          </div>
+        </details>
+      )}
+
+      {/* OAuth (Google) guidance — full how-to before connect; active services after. */}
+      {def.connectionType === 'oauth' && def.available && def.oauthHelp && (
+        <OAuthGuidance help={def.oauthHelp} connected={connected} scopes={status?.scopes} />
+      )}
+
+      {/* Managed platforms (Wix Blog) — administrator-managed, no self-serve connect. */}
+      {def.connectionType === 'managed' && def.managedNote && (
+        <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-xs text-gray-500">
+          {def.managedNote}
         </div>
       )}
     </div>
@@ -526,16 +598,24 @@ function PlatformRow({
 
 function ConnectModal({
   def,
+  status,
   onClose,
   onConnected,
 }: {
   def: PlatformDef
+  status?: PlatformConnection
   onClose: () => void
   onConnected: (message: string) => void
 }) {
+  const channels = def.channels ?? []
+  const existingMap: Record<string, string> = status?.profileMap ?? {}
   const connect = useConnectPlatform()
   const [apiKey, setApiKey] = useState('')
-  const [profileId, setProfileId] = useState('')
+  // Prefill every channel from the existing map so a reconnect shows all current
+  // mappings; the user can edit any of them.
+  const [profileIds, setProfileIds] = useState<Record<string, string>>(() =>
+    Object.fromEntries(channels.map((ch) => [ch.key, existingMap[ch.key] ?? ''])),
+  )
   const [show, setShow] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -546,10 +626,15 @@ function ConnectModal({
       return
     }
     setError(null)
-    const extra =
-      def.id === 'buffer' && profileId.trim()
-        ? { profileMap: { linkedin: profileId.trim() } }
-        : undefined
+    let extra: { profileMap: Record<string, string> } | undefined
+    if (channels.length) {
+      const profileMap: Record<string, string> = {}
+      for (const ch of channels) {
+        const v = profileIds[ch.key]?.trim()
+        if (v) profileMap[ch.key] = v
+      }
+      if (Object.keys(profileMap).length) extra = { profileMap }
+    }
     connect.mutate(
       { platform: def.id, apiKey: key, extra },
       {
@@ -573,7 +658,7 @@ function ConnectModal({
               autoFocus
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={KEY_PLACEHOLDER[def.id] ?? '••••••••'}
+              placeholder={def.apiKeyPlaceholder ?? '••••••••'}
               className="pr-10 font-mono"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') submit()
@@ -590,40 +675,48 @@ function ConnectModal({
           </div>
         </div>
 
-        {def.id === 'buffer' && (
-          <div>
-            <Label>
-              LinkedIn profile ID <span className="font-normal text-gray-600">(optional)</span>
-            </Label>
-            <Input
-              value={profileId}
-              onChange={(e) => setProfileId(e.target.value)}
-              placeholder="Buffer channel id for LinkedIn"
-              className="font-mono"
-            />
-            <p className="mt-1 text-xs text-gray-600">
-              Maps your LinkedIn channel so posts publish to the right account. Existing channel ids are kept.
-            </p>
-          </div>
-        )}
-
         {def.apiKeyHelp && (
           <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-xs text-gray-500">
-            <div className="mb-0.5 font-medium text-gray-400">Where to find this</div>
-            {def.apiKeyHelp}
+            <div className="mb-1 font-medium text-gray-400">Where to find this</div>
+            <ol className="list-decimal space-y-1 pl-4">
+              {def.apiKeyHelp.steps.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ol>
+            {def.apiKeyHelp.note && <p className="mt-2 text-gray-500">{def.apiKeyHelp.note}</p>}
           </div>
         )}
 
-        {def.permissions && def.permissions.length > 0 && (
-          <div className="text-xs text-gray-500">
-            <div className="mb-1 font-medium text-gray-400">Permissions needed</div>
-            <ul className="space-y-0.5">
-              {def.permissions.map((p) => (
-                <li key={p} className="flex items-center gap-1.5">
-                  <Check className="h-3 w-3 text-emerald-400" /> {p}
-                </li>
-              ))}
-            </ul>
+        {def.apiKeyHelp?.warning && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 text-xs text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{def.apiKeyHelp.warning}</span>
+          </div>
+        )}
+
+        {channels.length > 0 && (
+          <div className="space-y-3">
+            {def.channelNote && <p className="text-xs text-gray-500">{def.channelNote}</p>}
+            {channels.map((ch) => (
+              <div key={ch.key}>
+                <Label>
+                  {ch.label} channel ID{' '}
+                  <span className="font-normal text-gray-600">(optional)</span>
+                </Label>
+                <Input
+                  value={profileIds[ch.key] ?? ''}
+                  onChange={(e) => setProfileIds((m) => ({ ...m, [ch.key]: e.target.value }))}
+                  placeholder={ch.placeholder}
+                  className="font-mono"
+                />
+                <details className="mt-1">
+                  <summary className="cursor-pointer select-none text-xs text-gray-500 hover:text-gray-400">
+                    How to find this ↓
+                  </summary>
+                  <p className="mt-1 text-xs text-gray-600">{ch.help}</p>
+                </details>
+              </div>
+            ))}
           </div>
         )}
 

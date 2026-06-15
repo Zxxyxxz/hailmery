@@ -236,6 +236,14 @@ export async function storeGoogleCredential(opts: {
     opts.email != null ? await encryptSecret(JSON.stringify({ email: opts.email }), secretsKey) : null;
   const expiresAt = new Date(Date.now() + opts.expiresInSec * 1000).toISOString();
   const scopes = opts.scopes.map((s) => s.trim()).filter(Boolean);
+  // Bind the text[] as an explicit ARRAY[...] of scalar params. Interpolating a JS
+  // array directly (`${scopes}::text[]`) makes drizzle emit a parenthesized list
+  // `($1, $2, …)` — a record — so Postgres rejects the cast with "cannot cast type
+  // record to text[]". ARRAY[...] binds each scope on its own as text.
+  const scopesSql = sql`ARRAY[${sql.join(
+    scopes.map((s) => sql`${s}`),
+    sql`, `,
+  )}]::text[]`;
 
   await withTenantDb(db, tenantId, async (tx) => {
     await tx.execute(sql`
@@ -244,7 +252,7 @@ export async function storeGoogleCredential(opts: {
          encrypted_profile_map, token_expires_at, scopes, updated_at)
       VALUES (
         ${tenantId}, ${GOOGLE_PLATFORM}, ${accessCipher}, ${refreshCipher},
-        ${profileCipher}, ${expiresAt}::timestamptz, ${scopes}::text[], now()
+        ${profileCipher}, ${expiresAt}::timestamptz, ${scopesSql}, now()
       )
       ON CONFLICT (tenant_id, platform) DO UPDATE SET
         encrypted_access_token = EXCLUDED.encrypted_access_token,

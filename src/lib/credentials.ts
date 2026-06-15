@@ -98,6 +98,40 @@ export async function loadSecret(
 }
 
 /**
+ * Read + decrypt ONLY a tenant's profile map for a platform, independent of
+ * whether an access token is present. loadSecret() returns null when the token
+ * is absent (e.g. right after a disconnect), so the connect endpoint uses this
+ * to merge the preserved map on reconnect, and /api/connections uses it to show
+ * Buffer's mapped channel ids. Returns null when there's no row, no map, or the
+ * map can't be decrypted (rotated key / malformed).
+ */
+export async function loadProfileMap(
+  db: Db,
+  tenantId: string,
+  platform: string,
+  secretsKey: string,
+): Promise<Record<string, string> | null> {
+  const row = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<{ encrypted_profile_map: string | null }>(sql`
+      SELECT encrypted_profile_map
+      FROM marketing.tenant_secrets
+      WHERE tenant_id = ${tenantId} AND platform = ${platform}
+      LIMIT 1
+    `);
+    return r.rows[0] ?? null;
+  });
+  if (!row?.encrypted_profile_map) return null;
+  try {
+    return JSON.parse(await decryptSecret(row.encrypted_profile_map, secretsKey)) as Record<
+      string,
+      string
+    >;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build the credential object an adapter constructor expects. Buffer profile
  * IDs come from the tenant's encrypted profile map (tenant_secrets); other extra
  * fields (e.g. Wix site id) are passed through via the optional `extra` argument
