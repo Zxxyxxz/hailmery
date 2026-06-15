@@ -249,15 +249,20 @@ export async function insertDraft(opts: {
   payload: Record<string, unknown>;
   pillar?: string | null;
   costCents?: number;
+  /** Full multi-guardian breakdown (Session 12) → content_drafts.guardian_breakdown.
+   *  Null when guardians did not run (kept nullable so the column degrades cleanly). */
+  guardianBreakdown?: unknown;
 }): Promise<string> {
-  const { db, tenantId, siteId, campaignId, channel, payload, pillar = null, costCents = 0 } = opts;
+  const { db, tenantId, siteId, campaignId, channel, payload, pillar = null, costCents = 0, guardianBreakdown } = opts;
+  const breakdownJson = guardianBreakdown == null ? null : JSON.stringify(guardianBreakdown);
   return withTenantDb(db, tenantId, async (tx) => {
     const r = await tx.execute<IdRow>(sql`
       INSERT INTO marketing.content_drafts
-        (tenant_id, campaign_id, site_id, pillar, channel, status, payload, cost_cents)
+        (tenant_id, campaign_id, site_id, pillar, channel, status, payload, cost_cents, guardian_breakdown)
       VALUES (
         ${tenantId}, ${campaignId}, ${siteId}, ${pillar}, ${channel},
-        'pending_review', ${JSON.stringify(payload)}::jsonb, ${costCents}
+        'pending_review', ${JSON.stringify(payload)}::jsonb, ${costCents},
+        ${breakdownJson}::jsonb
       )
       RETURNING id
     `);

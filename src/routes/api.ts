@@ -17,6 +17,11 @@ import { encryptSecret, decryptSecret } from '../lib/secrets.js';
 import { loadSecret, loadProfileMap } from '../lib/credentials.js';
 import { resolveEmailRecipients } from '../services/recipients.js';
 import { brandGuardian } from '../agents/guardian.js';
+import {
+  runAllGuardians,
+  summarizeGuardianBreakdown,
+  guardianDraftText,
+} from '../agents/guardians/index.js';
 import { runGenerationPipeline } from '../workflows/generation.js';
 import { publishSingleDraft } from '../workflows/publish.js';
 import type { PipelineEnv, GenerationParams, TriggerReason } from '../workflows/types.js';
@@ -165,6 +170,7 @@ function normalizeDraft(r: Row) {
     publishAt: r.publish_at ?? null,
     guardianScore: gs,
     scoreHuman: r.score_human ?? null,
+    guardianBreakdown: r.guardian_breakdown ?? null,
     dismissReason: r.dismiss_reason ?? null,
     failedReason: r.failed_reason ?? null,
     publishedRef: r.published_ref ?? null,
@@ -274,7 +280,7 @@ api.get('/drafts', async (c) => {
     }
     const r = await tx.execute<Row>(sql`
       SELECT cd.id, cd.channel, cd.status, cd.campaign_id, cd.pillar, cd.publish_at,
-             cd.payload, cd.assets, cd.score_human, cd.dismiss_reason,
+             cd.payload, cd.assets, cd.score_human, cd.guardian_breakdown, cd.dismiss_reason,
              cd.failed_reason, cd.published_ref,
              cd.created_at, cd.updated_at,
              c.name AS campaign_name
@@ -355,7 +361,7 @@ api.patch('/drafts/:id', async (c) => {
 
     const r = await tx.execute<Row>(sql`
       SELECT cd.id, cd.channel, cd.status, cd.campaign_id, cd.pillar, cd.publish_at,
-             cd.payload, cd.assets, cd.score_human, cd.dismiss_reason,
+             cd.payload, cd.assets, cd.score_human, cd.guardian_breakdown, cd.dismiss_reason,
              cd.failed_reason, cd.published_ref,
              cd.created_at, cd.updated_at, c.name AS campaign_name
       FROM marketing.content_drafts cd
@@ -366,6 +372,73 @@ api.patch('/drafts/:id', async (c) => {
   });
 
   return c.json({ draft: normalizeDraft(updated) });
+});
+
+// ── POST /api/drafts/:id/recheck ────────────────────────────────────
+// Re-runs all five guardians on an existing draft (e.g. after the operator
+// edits the text) and persists the fresh breakdown. Returns the new breakdown +
+// the normalized draft so the card can update in place without a refetch.
+
+api.post('/drafts/:id/recheck', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+  const id = c.req.param('id');
+  try {
+    assertUuid(id, 'id');
+  } catch {
+    return err(c, 422, 'bad_id', 'draft id must be a UUID');
+  }
+
+  const db = makeDb(c.env.DATABASE_URL);
+  const existing = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT channel, campaign_id, payload FROM marketing.content_drafts
+      WHERE id = ${id} AND tenant_id = ${tenantId} LIMIT 1
+    `);
+    return r.rows[0] ?? null;
+  });
+  if (!existing) return err(c, 404, 'not_found', 'Draft not found');
+
+  const payload = (existing.payload ?? {}) as Record<string, any>;
+  const draftText = guardianDraftText(payload);
+
+  let breakdown;
+  try {
+    breakdown = await runAllGuardians({
+      db,
+      tenantId,
+      channel: String(existing.channel),
+      draftText,
+      draftPayload: payload,
+      campaignId: existing.campaign_id ?? null,
+    });
+  } catch (e) {
+    return err(c, 500, 'recheck_failed', (e as Error).message);
+  }
+  const summary = summarizeGuardianBreakdown(breakdown);
+
+  const updated = await withTenantDb(db, tenantId, async (tx) => {
+    const merged = { ...payload, guardianScore: summary.guardianScore, guardianNotes: summary.guardianNotes };
+    await tx.execute(sql`
+      UPDATE marketing.content_drafts
+      SET guardian_breakdown = ${JSON.stringify(breakdown)}::jsonb,
+          payload = ${JSON.stringify(merged)}::jsonb,
+          updated_at = now()
+      WHERE id = ${id} AND tenant_id = ${tenantId}
+    `);
+    const r = await tx.execute<Row>(sql`
+      SELECT cd.id, cd.channel, cd.status, cd.campaign_id, cd.pillar, cd.publish_at,
+             cd.payload, cd.assets, cd.score_human, cd.guardian_breakdown, cd.dismiss_reason,
+             cd.failed_reason, cd.published_ref,
+             cd.created_at, cd.updated_at, c.name AS campaign_name
+      FROM marketing.content_drafts cd
+      LEFT JOIN marketing.campaigns c ON c.id = cd.campaign_id
+      WHERE cd.id = ${id} AND cd.tenant_id = ${tenantId} LIMIT 1
+    `);
+    return r.rows[0];
+  });
+
+  return c.json({ breakdown, draft: normalizeDraft(updated) });
 });
 
 // ── GET /api/drafts/:id/preview ─────────────────────────────────────
@@ -1829,6 +1902,36 @@ api.post('/publish/:draftId', async (c) => {
     assertUuid(draftId, 'draftId');
   } catch {
     return err(c, 422, 'bad_id', 'draftId must be a UUID');
+  }
+
+  // Platform Rules guardian is the one blocking gate: if the stored breakdown
+  // flags a blocking violation (e.g. over the channel char limit, email with no
+  // unsubscribe), refuse the publish with the specific issues. Drafts generated
+  // before the multi-guardian system carry a null breakdown and are allowed
+  // through (legacy-safe) — they were reviewed under the old single guardian.
+  const db = makeDb(c.env.DATABASE_URL);
+  const breakdown = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT guardian_breakdown FROM marketing.content_drafts
+      WHERE id = ${draftId} AND tenant_id = ${tenantId} LIMIT 1
+    `);
+    return (r.rows[0]?.guardian_breakdown ?? null) as Record<string, any> | null;
+  });
+  if (breakdown?.blocking) {
+    const flags = Array.isArray(breakdown.platformRules?.flags) ? breakdown.platformRules.flags : [];
+    const blockingIssues = flags
+      .filter((f: Record<string, unknown>) => f.severity === 'blocking')
+      .map((f: Record<string, unknown>) => String(f.message));
+    return c.json(
+      {
+        ok: false,
+        error: 'Content blocked by Platform Rules guardian',
+        code: 'guardian_blocked',
+        blockingIssues,
+        hint: 'Fix the issues above and click Re-check before publishing',
+      },
+      422,
+    );
   }
 
   const env = c.env as unknown as PipelineEnv;

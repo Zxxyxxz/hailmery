@@ -10,7 +10,7 @@
 
 import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
 import { anthropic, MODELS } from '../lib/ai.js';
-import { brandGuardian } from '../agents/guardian.js';
+import { runAllGuardians, summarizeGuardianBreakdown } from '../agents/guardians/index.js';
 import {
   loadGenContext,
   brandVoicePreamble,
@@ -155,16 +155,23 @@ export async function generateSocial(opts: {
   const text = cleanProse(textBlock.text);
 
   const usage = usageOf(response.usage);
-  const guardian = await brandGuardian({ db, tenantId, draftText: text });
+  const breakdown = await runAllGuardians({
+    db,
+    tenantId,
+    channel,
+    draftText: text,
+    draftPayload: { kind: 'social', channel, topic, text },
+    campaignId: ctx.campaignId,
+  });
+  const summary = summarizeGuardianBreakdown(breakdown);
 
   const payload = {
     kind: 'social',
     channel,
     topic,
     text,
-    guardianScore: guardian.score,
-    guardianNotes: guardian.notes,
-    flagged: guardian.flagged,
+    guardianScore: summary.guardianScore,
+    guardianNotes: summary.guardianNotes,
     sources: ctx.chunks.map((c) => c.source_filename),
     usage,
   };
@@ -177,6 +184,7 @@ export async function generateSocial(opts: {
     channel,
     payload,
     costCents: estimateTextCostCents(usage),
+    guardianBreakdown: breakdown,
   });
 
   return {
@@ -186,9 +194,9 @@ export async function generateSocial(opts: {
     text,
     charCount: text.length,
     wordCount: text.split(/\s+/).filter(Boolean).length,
-    guardianScore: guardian.score,
-    guardianNotes: guardian.notes,
-    flaggedCount: guardian.flagged.length,
+    guardianScore: summary.guardianScore,
+    guardianNotes: summary.guardianNotes,
+    flaggedCount: summary.flagCount,
     sources: ctx.chunks.map((c) => c.source_filename),
     usage,
   };

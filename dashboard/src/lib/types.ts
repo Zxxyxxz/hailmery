@@ -63,6 +63,85 @@ export interface DraftAssets {
   [key: string]: unknown
 }
 
+// ── Multi-guardian breakdown (Session 12) ───────────────────────────
+// Mirrors src/agents/guardians/types.ts on the Worker. Surfaced on every draft
+// as Draft.guardianBreakdown (null for drafts generated before the system).
+
+export interface PlatformRuleFlag {
+  rule: string
+  severity: 'blocking' | 'warning'
+  message: string
+  actual?: number
+  limit?: string | number
+}
+
+export interface PlatformRulesResult {
+  guardian: 'platform_rules'
+  score: number
+  passed: boolean
+  blocking: boolean
+  flags: PlatformRuleFlag[]
+  skipped: false
+}
+
+export interface FactualResult {
+  guardian: 'factual'
+  score: number
+  flags: Array<{ claim: string; issue: string }>
+  skipped: boolean
+  skipReason?: string
+  limitedData?: boolean
+}
+
+export interface BrandVoiceResult {
+  guardian: 'brand_voice'
+  score: number
+  flags: Array<{ issue: string; suggestion: string }>
+  skipped: boolean
+  skipReason?: string
+  limitedData?: boolean
+}
+
+export interface AudienceFitResult {
+  guardian: 'audience_fit'
+  score: number
+  personaMatch?: string
+  flags: Array<{ issue: string; suggestion: string }>
+  skipped: boolean
+  skipReason?: string
+  notApplicable?: boolean
+  limitedData?: boolean
+}
+
+export interface PerformancePredictionResult {
+  guardian: 'performance_prediction'
+  predictedScore: number
+  signals: Array<{ type: 'positive' | 'warning'; message: string }>
+  skipped: boolean
+  skipReason?: string
+  examplesUsed: number
+}
+
+export interface GuardianMissingContext {
+  guardian: string
+  message: string
+  action: string
+  actionUrl?: string
+}
+
+export interface GuardianBreakdown {
+  overall: number
+  blocking: boolean
+  platformRules: PlatformRulesResult
+  factual: FactualResult
+  brandVoice: BrandVoiceResult
+  audienceFit: AudienceFitResult
+  performancePrediction: PerformancePredictionResult
+  missingContext: GuardianMissingContext[]
+  runAt: string
+  model: string
+}
+
 export interface Draft {
   id: string
   channel: string
@@ -73,6 +152,7 @@ export interface Draft {
   publishAt: string | null
   guardianScore: number | null
   scoreHuman: number | null
+  guardianBreakdown: GuardianBreakdown | null
   dismissReason: string | null
   failedReason: string | null
   publishedRef: string | null

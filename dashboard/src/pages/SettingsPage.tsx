@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Plug,
   FileText,
@@ -65,8 +66,18 @@ import { TagInput } from '@/components/ui/tag-input'
 
 type BadgeVariant = NonNullable<BadgeProps['variant']>
 
+const SETTINGS_TABS = ['brand', 'platforms', 'corpus', 'history', 'schedule']
+
 export default function SettingsPage() {
-  const [tab, setTab] = useState('brand')
+  const [searchParams] = useSearchParams()
+  // Honour a ?tab= deep link (e.g. the guardian breakdown's "set up to unlock"
+  // links point here). Falls back to the Brand Voice tab.
+  const requested = searchParams.get('tab')
+  const [tab, setTab] = useState(requested && SETTINGS_TABS.includes(requested) ? requested : 'brand')
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (t && SETTINGS_TABS.includes(t)) setTab(t)
+  }, [searchParams])
   return (
     <div className="animate-fade-in space-y-6">
       <header>

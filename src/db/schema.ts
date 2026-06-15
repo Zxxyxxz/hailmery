@@ -288,6 +288,13 @@ export const contentDrafts = marketing.table('content_drafts', {
   // True for the top decile of scored drafts (score > 1.0). Those drafts are
   // promoted into golden_example document_chunks so generation retrieves them.
   isGoldenExample: boolean('is_golden_example').notNull().default(false),
+  // Multi-guardian breakdown (Session 12) — the full result of the 5 parallel
+  // validators (platform_rules/factual/brand_voice/audience_fit/performance) with
+  // per-dimension scores, flags, skip reasons, and the overall weighted score.
+  // Nullable: drafts generated before the multi-guardian system carry null and
+  // the dashboard falls back to payload.guardianScore. Added via rls.sql (NOT
+  // db:push) — see the 1g block there.
+  guardianBreakdown: jsonb('guardian_breakdown'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

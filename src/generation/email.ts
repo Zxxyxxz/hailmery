@@ -14,6 +14,7 @@ import { sql } from 'drizzle-orm';
 import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
 import { anthropic, MODELS } from '../lib/ai.js';
 import { brandGuardian } from '../agents/guardian.js';
+import { runAllGuardians, summarizeGuardianBreakdown } from '../agents/guardians/index.js';
 import { withTenantDb, hasPlatformSecret } from '../lib/tenant.js';
 import {
   loadGenContext,
@@ -207,12 +208,6 @@ export async function generateEmail(opts: {
       plainText: section(raw, '@@PLAIN@@'),
     };
 
-    const guardian = await brandGuardian({
-      db,
-      tenantId,
-      draftText: `${newsletter.subjectLine}\n${newsletter.previewText}\n\n${newsletter.plainText}`,
-    });
-
     const payload = {
       kind: 'email',
       emailType,
@@ -227,29 +222,39 @@ export async function generateEmail(opts: {
       from_email: delivery.fromEmail,
       from_name: delivery.fromName,
       list_source: delivery.listSource ?? undefined,
-      guardianScore: guardian.score,
-      guardianNotes: guardian.notes,
-      flagged: guardian.flagged,
       sources: ctx.chunks.map((c) => c.source_filename),
       usage,
     };
+
+    const breakdown = await runAllGuardians({
+      db,
+      tenantId,
+      channel: 'email',
+      draftText: `${newsletter.subjectLine}\n${newsletter.previewText}\n\n${newsletter.plainText}`,
+      draftPayload: payload,
+      campaignId: ctx.campaignId,
+    });
+    const summary = summarizeGuardianBreakdown(breakdown);
+    const enrichedPayload = { ...payload, guardianScore: summary.guardianScore, guardianNotes: summary.guardianNotes };
+
     const draftId = await insertDraft({
       db,
       tenantId,
       siteId: ctx.siteId,
       campaignId: ctx.campaignId,
       channel: 'email',
-      payload,
+      payload: enrichedPayload,
       costCents: estimateTextCostCents(usage),
+      guardianBreakdown: breakdown,
     });
 
     return {
       draftId,
       emailType,
       subjectLine: newsletter.subjectLine,
-      guardianScore: guardian.score,
-      guardianNotes: guardian.notes,
-      flaggedCount: guardian.flagged.length,
+      guardianScore: summary.guardianScore,
+      guardianNotes: summary.guardianNotes,
+      flaggedCount: summary.flagCount,
       sources: ctx.chunks.map((c) => c.source_filename),
       usage,
       newsletter,
@@ -328,12 +333,6 @@ export async function generateEmail(opts: {
       throw new Error('Drip generation produced 0 emails.');
     }
 
-    const guardian = await brandGuardian({
-      db,
-      tenantId,
-      draftText: sequence.map((e) => `${e.subject}\n${e.plainText}`).join('\n\n'),
-    });
-
     const payload = {
       kind: 'email',
       emailType,
@@ -345,29 +344,39 @@ export async function generateEmail(opts: {
       from_email: delivery.fromEmail,
       from_name: delivery.fromName,
       list_source: delivery.listSource ?? undefined,
-      guardianScore: guardian.score,
-      guardianNotes: guardian.notes,
-      flagged: guardian.flagged,
       sources: ctx.chunks.map((c) => c.source_filename),
       usage,
     };
+
+    const breakdown = await runAllGuardians({
+      db,
+      tenantId,
+      channel: 'email',
+      draftText: sequence.map((e) => `${e.subject}\n${e.plainText}`).join('\n\n'),
+      draftPayload: payload,
+      campaignId: ctx.campaignId,
+    });
+    const summary = summarizeGuardianBreakdown(breakdown);
+    const enrichedPayload = { ...payload, guardianScore: summary.guardianScore, guardianNotes: summary.guardianNotes };
+
     const draftId = await insertDraft({
       db,
       tenantId,
       siteId: ctx.siteId,
       campaignId: ctx.campaignId,
       channel: 'email',
-      payload,
+      payload: enrichedPayload,
       costCents: estimateTextCostCents(usage),
+      guardianBreakdown: breakdown,
     });
 
     return {
       draftId,
       emailType,
       subjectLine: sequence[0].subject,
-      guardianScore: guardian.score,
-      guardianNotes: guardian.notes,
-      flaggedCount: guardian.flagged.length,
+      guardianScore: summary.guardianScore,
+      guardianNotes: summary.guardianNotes,
+      flaggedCount: summary.flagCount,
       sources: ctx.chunks.map((c) => c.source_filename),
       usage,
       sequence,

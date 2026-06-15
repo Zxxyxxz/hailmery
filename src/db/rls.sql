@@ -173,6 +173,16 @@ CREATE INDEX IF NOT EXISTS recommendations_status_idx
 CREATE INDEX IF NOT EXISTS recommendations_week_idx
   ON marketing.recommendations (tenant_id, week_of);
 
+-- 1g. Multi-guardian system (Session 12 — src/agents/guardians/). Idempotent +
+--     placed BEFORE the RLS enable/policy loops so the column is present when
+--     policies reapply. Drizzle's schema.ts stays the source of truth + types;
+--     this mirrors the diff for the migrate path (pnpm db:migrate applies
+--     rls.sql; it does NOT run drizzle-kit, which would drop every RLS policy).
+--     guardian_breakdown holds the full 5-validator result; nullable so older
+--     drafts keep working (dashboard falls back to payload.guardianScore).
+ALTER TABLE IF EXISTS marketing.content_drafts
+  ADD COLUMN IF NOT EXISTS guardian_breakdown jsonb;
+
 -- 2. HNSW index for fast cosine ANN on document_chunks.embedding.
 --    Cosine is what text-embedding-3-small ships normalized for.
 --    Only run if the table actually exists (lets us call this migration

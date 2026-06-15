@@ -17,6 +17,7 @@ import type {
   Draft,
   DraftPreview,
   DraftStatus,
+  GuardianBreakdown,
   GenerateNowInput,
   GenerateNowResult,
   GscKeyword,
@@ -77,6 +78,27 @@ export function usePatchDraft() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drafts', currentId] })
       qc.invalidateQueries({ queryKey: ['campaigns', currentId] })
+    },
+  })
+}
+
+/**
+ * Re-run all five guardians on a draft (after an edit) and persist the fresh
+ * breakdown. Returns the new breakdown + normalized draft; invalidates the
+ * drafts cache so every view reconciles.
+ */
+export function useRecheckDraft() {
+  const qc = useQueryClient()
+  const { currentId } = useTenant()
+  return useMutation({
+    mutationFn: async (draftId: string) => {
+      const res = await api.post<{ breakdown: GuardianBreakdown; draft: Draft }>(
+        `/api/drafts/${draftId}/recheck`,
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['drafts', currentId] })
     },
   })
 }

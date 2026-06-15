@@ -27,6 +27,7 @@ import { toApiError } from '@/lib/api'
 import type { ToastState } from '@/components/ui/toast'
 import { ChannelIcon } from './ChannelIcon'
 import { GuardianBadge } from './GuardianBadge'
+import { GuardianBreakdownPanel } from './GuardianBreakdown'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Popover } from '@/components/ui/popover'
@@ -63,6 +64,8 @@ export function DraftCard({
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [exiting, setExiting] = useState(false)
+  // Auto-open the breakdown when the draft is blocked, so the operator sees why.
+  const [showGuardian, setShowGuardian] = useState(draft.guardianBreakdown?.blocking ?? false)
 
   // editable buffers
   const [text, setText] = useState(draft.payload.text ?? '')
@@ -180,10 +183,32 @@ export function DraftCard({
         {(draft.status === 'published' || draft.status === 'measured') && (
           <Badge variant="green">Published</Badge>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
           <GuardianBadge score={draft.guardianScore} />
+          {draft.guardianBreakdown && (
+            <button
+              onClick={() => setShowGuardian((v) => !v)}
+              aria-label="Toggle guardian breakdown"
+              className="rounded-md p-1 text-gray-500 transition-colors hover:bg-white/[0.06] hover:text-gray-300"
+            >
+              {showGuardian ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Multi-guardian breakdown (Session 12) — expandable; auto-open when blocked. */}
+      {showGuardian && draft.guardianBreakdown && (
+        <GuardianBreakdownPanel
+          draftId={draft.id}
+          breakdown={draft.guardianBreakdown}
+          onToast={onToast}
+        />
+      )}
 
       {/* Failure reason — surfaced on the card so the operator can act on it */}
       {draft.status === 'failed' && draft.failedReason && (
