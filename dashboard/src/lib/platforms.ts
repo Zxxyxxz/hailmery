@@ -136,8 +136,8 @@ export const PLATFORMS: PlatformDef[] = [
         'Enable CRM → Timeline (create events)',
         'Click Create app → copy the Access Token shown',
       ],
-      note: 'Use HubSpot Free or Starter ($20/mo). Do NOT upgrade to Marketing Hub Pro — it carries a mandatory $3,000 onboarding fee.',
-      warning: 'Never share this token — it grants read/write access to your HubSpot contacts.',
+      note: 'Never share this token — it grants read/write access to your HubSpot contacts.',
+      warning: 'Do NOT upgrade to HubSpot Marketing Hub Pro — it carries a mandatory $3,000 onboarding fee. Free or Starter ($20/mo) is all hailmery needs.',
     },
   },
 
