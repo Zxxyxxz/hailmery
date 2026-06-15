@@ -1910,13 +1910,22 @@ api.post('/publish/:draftId', async (c) => {
   // before the multi-guardian system carry a null breakdown and are allowed
   // through (legacy-safe) — they were reviewed under the old single guardian.
   const db = makeDb(c.env.DATABASE_URL);
-  const breakdown = await withTenantDb(db, tenantId, async (tx) => {
+  const row = await withTenantDb(db, tenantId, async (tx) => {
     const r = await tx.execute<Row>(sql`
-      SELECT guardian_breakdown FROM marketing.content_drafts
+      SELECT status, guardian_breakdown FROM marketing.content_drafts
       WHERE id = ${draftId} AND tenant_id = ${tenantId} LIMIT 1
     `);
-    return (r.rows[0]?.guardian_breakdown ?? null) as Record<string, any> | null;
+    return r.rows[0] ?? null;
   });
+  if (!row) return err(c, 404, 'not_found', 'Draft not found');
+
+  // Only an approved or scheduled draft may be published — reject pending_review,
+  // dismissed, failed, generating, or already-published drafts.
+  if (row.status !== 'approved' && row.status !== 'scheduled') {
+    return err(c, 422, 'not_publishable', `Draft is '${row.status}' — only approved or scheduled drafts can be published`);
+  }
+
+  const breakdown = (row.guardian_breakdown ?? null) as Record<string, any> | null;
   if (breakdown?.blocking) {
     const flags = Array.isArray(breakdown.platformRules?.flags) ? breakdown.platformRules.flags : [];
     const blockingIssues = flags
