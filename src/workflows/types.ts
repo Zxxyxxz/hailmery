@@ -65,6 +65,12 @@ export interface GenerationParams {
   triggerReason: TriggerReason;
   /** Restrict generation to these channels (else use the campaign channel_config). */
   channels?: string[];
+  /**
+   * Per-channel batch size for a forced trigger (manual / campaign_created).
+   * Ignored for non-forced triggers (cron tops up to the queue target instead).
+   * Defaults to FORCE_BATCH in the pipeline when omitted.
+   */
+  forceBatch?: number;
 }
 
 export interface PublishParams {

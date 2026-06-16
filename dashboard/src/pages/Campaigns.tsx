@@ -71,6 +71,7 @@ export default function Campaigns() {
   const { data: campaigns, isLoading, isError } = useCampaigns()
   const [open, setOpen] = useState(false)
   const [topic, setTopic] = useState<IntelligenceTopic | null>(null)
+  const [editing, setEditing] = useState<Campaign | null>(null)
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -107,12 +108,13 @@ export default function Campaigns() {
       {!isLoading && !isError && (
         <div className="grid gap-4 md:grid-cols-2">
           {(campaigns ?? []).map((c) => (
-            <CampaignCard key={c.id} campaign={c} />
+            <CampaignCard key={c.id} campaign={c} onEdit={(camp) => setEditing(camp)} />
           ))}
         </div>
       )}
 
       <NewCampaignDialog open={open} onClose={() => setOpen(false)} />
+      <EditCampaignDialog campaign={editing} onClose={() => setEditing(null)} />
       <CreateNowDialog topic={topic} onClose={() => setTopic(null)} />
     </div>
   )
@@ -357,7 +359,13 @@ function CreateNowDialog({
   )
 }
 
-function CampaignCard({ campaign }: { campaign: Campaign }) {
+function CampaignCard({
+  campaign,
+  onEdit,
+}: {
+  campaign: Campaign
+  onEdit: (c: Campaign) => void
+}) {
   const patch = usePatchCampaign()
   const goalValue = campaign.goalValue ?? 0
   const paused = campaign.status === 'paused'
@@ -430,12 +438,10 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
       </div>
 
       <div className="mt-5 flex items-center gap-2 border-t border-white/[0.06] pt-4">
-        <span title="Coming in V2" className="inline-flex cursor-not-allowed">
-          <Button variant="secondary" size="sm" disabled>
-            <Pencil className="h-4 w-4" />
-            Edit
-          </Button>
-        </span>
+        <Button variant="secondary" size="sm" onClick={() => onEdit(campaign)}>
+          <Pencil className="h-4 w-4" />
+          Edit
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -680,6 +686,137 @@ function NewCampaignDialog({
           <Button onClick={submit} disabled={!canSubmit || create.isPending}>
             {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Create &amp; generate
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+// ── Edit campaign ────────────────────────────────────────────────────
+// Reuses the create-dialog field patterns but edits only the safe, content-
+// facing fields (name / type / audience / voice / active|paused). launch date,
+// goals, channels and system fields are intentionally out of scope here.
+
+function EditCampaignDialog({
+  campaign,
+  onClose,
+}: {
+  campaign: Campaign | null
+  onClose: () => void
+}) {
+  const patch = usePatchCampaign()
+  const [name, setName] = useState('')
+  const [type, setType] = useState<CampaignType>('evergreen')
+  const [audienceBrief, setAudienceBrief] = useState('')
+  const [voiceModifier, setVoiceModifier] = useState('')
+  const [status, setStatus] = useState<'active' | 'paused'>('active')
+
+  // Re-seed the form whenever a different campaign is opened. audienceBrief is
+  // stored as jsonb { text } on the server, so recover the string from .text.
+  useEffect(() => {
+    if (!campaign) return
+    setName(campaign.name)
+    setType(campaign.type)
+    const brief = campaign.audienceBrief as { text?: unknown } | null
+    setAudienceBrief(typeof brief?.text === 'string' ? brief.text : '')
+    setVoiceModifier(campaign.voiceModifier ?? '')
+    setStatus(campaign.status === 'paused' ? 'paused' : 'active')
+    patch.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign])
+
+  function submit() {
+    if (!campaign) return
+    patch.mutate(
+      {
+        id: campaign.id,
+        patch: {
+          name: name.trim(),
+          type,
+          audienceBrief: audienceBrief.trim(),
+          voiceModifier: voiceModifier.trim() || null,
+          status,
+        },
+      },
+      { onSuccess: () => onClose() },
+    )
+  }
+
+  const canSubmit = name.trim().length > 0
+
+  return (
+    <Dialog
+      open={campaign !== null}
+      onClose={onClose}
+      className="max-w-xl"
+      title="Edit campaign"
+      description="Update targeting and voice. Status pauses or resumes generation."
+    >
+      <div className="space-y-4 p-6 pt-2">
+        <div>
+          <Label>Name</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>Type</Label>
+            <Select
+              value={type}
+              onChange={(e) => setType(e.target.value as CampaignType)}
+            >
+              {CAMPAIGN_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {TYPE_LABEL[t]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Status</Label>
+            <Select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as 'active' | 'paused')}
+            >
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+            </Select>
+          </div>
+        </div>
+
+        <div>
+          <Label>Audience brief</Label>
+          <Textarea
+            rows={3}
+            value={audienceBrief}
+            onChange={(e) => setAudienceBrief(e.target.value)}
+            placeholder="Describe the target audience…"
+          />
+        </div>
+
+        <div>
+          <Label>Voice modifier (optional)</Label>
+          <Input
+            value={voiceModifier}
+            onChange={(e) => setVoiceModifier(e.target.value)}
+            placeholder='e.g. "more urgent", "more technical"'
+          />
+        </div>
+
+        {patch.isError && (
+          <div className="text-sm text-red-400">
+            Failed to save changes. Please try again.
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit || patch.isPending}>
+            {patch.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Save changes
           </Button>
         </div>
       </div>

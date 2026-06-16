@@ -213,7 +213,17 @@ export function usePatchCampaign() {
       patch,
     }: {
       id: string
-      patch: Partial<Pick<Campaign, 'status' | 'name' | 'goalValue' | 'channelConfig'>>
+      // audienceBrief is sent as a plain string (the backend wraps it as jsonb
+      // { text }), so this can't be a straight Pick over Campaign.
+      patch: {
+        status?: Campaign['status']
+        name?: Campaign['name']
+        type?: Campaign['type']
+        audienceBrief?: string
+        voiceModifier?: Campaign['voiceModifier']
+        goalValue?: Campaign['goalValue']
+        channelConfig?: Campaign['channelConfig']
+      }
     }) => {
       const res = await api.patch<{ campaign: Campaign }>(
         `/api/campaigns/${id}`,

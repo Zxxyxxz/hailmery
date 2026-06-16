@@ -32,10 +32,16 @@ type Db = NeonDatabase<Record<string, unknown>>;
 const QUEUE_TARGET = 5; // desired live drafts per channel before a channel is "full"
 const QUEUE_STATUSES = ['pending_review', 'approved', 'scheduled'] as const;
 
-// A manual "Generate more" click is an explicit user request, so it always
-// produces content — even when the queue is already at/over target. It forces a
-// small fixed batch per channel rather than topping up to the target.
+// A manual "Generate more" click and a freshly-created campaign are both
+// explicit requests for immediate content, so they always produce a small fixed
+// batch per channel (even when the queue is already at/over target) rather than
+// topping up to the target. The cron tick is the only non-forced trigger.
 const FORCE_BATCH = 2;
+
+/** Forced triggers generate a fixed batch immediately; cron tops up to target. */
+function isForced(reason: GenerationParams['triggerReason']): boolean {
+  return reason === 'manual' || reason === 'campaign_created';
+}
 // When a campaign has no channels configured (e.g. the seeded Default Evergreen),
 // a manual trigger still needs somewhere to publish — default to LinkedIn.
 const DEFAULT_MANUAL_CHANNELS = ['linkedin'];
@@ -112,9 +118,10 @@ export async function loadCampaignContext(
       input.channels && input.channels.length
         ? input.channels.map((c) => c.toLowerCase())
         : Object.keys(channelConfig).map((c) => c.toLowerCase());
-    // A manual top-up against a campaign with no configured channels still needs
-    // a target — fall back to a sensible default so the click always generates.
-    if (channels.length === 0 && input.triggerReason === 'manual') {
+    // A forced trigger (manual top-up or a new campaign) against a campaign with
+    // no configured channels still needs a target — fall back to a sensible
+    // default so the trigger always generates something.
+    if (channels.length === 0 && isForced(input.triggerReason)) {
       channels = [...DEFAULT_MANUAL_CHANNELS];
     }
 
@@ -174,6 +181,7 @@ export async function checkQueueDepth(
   env: PipelineEnv,
   ctx: CampaignContext,
   force = false,
+  forceBatch = FORCE_BATCH,
 ): Promise<ChannelPlan[]> {
   const db = makeDb(env.DATABASE_URL);
   return withTenantDb(db, ctx.tenantId, async (tx) => {
@@ -189,9 +197,9 @@ export async function checkQueueDepth(
           )}]::marketing.draft_status[])
       `);
       const current = Number(r.rows[0]?.n ?? 0);
-      // Force mode (manual click): always generate a small batch. Otherwise top
-      // up to the target and skip channels that are already full.
-      const toGenerate = force ? FORCE_BATCH : current >= QUEUE_TARGET ? 0 : QUEUE_TARGET - current;
+      // Force mode (manual click / new campaign): always generate a fixed batch.
+      // Otherwise top up to the target and skip channels that are already full.
+      const toGenerate = force ? forceBatch : current >= QUEUE_TARGET ? 0 : QUEUE_TARGET - current;
       plans.push({ channel, current, toGenerate });
     }
     return plans;
@@ -394,7 +402,7 @@ export async function runGenerationPipeline(
   input: GenerationParams,
 ): Promise<{ created: CreatedDraft[]; phase: string }> {
   const ctx = await loadCampaignContext(env, input);
-  const plans = await checkQueueDepth(env, ctx, input.triggerReason === 'manual');
+  const plans = await checkQueueDepth(env, ctx, isForced(input.triggerReason), input.forceBatch);
   const phase = determineCampaignPhase(ctx, new Date());
   const created = await generateContent(env, ctx, plans, phase);
   await notifyQueue(ctx, created);
@@ -409,7 +417,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<PipelineEnv, Generati
 
     const ctx = await step.do('loadCampaign', () => loadCampaignContext(env, input));
     const plans = await step.do('checkQueueDepth', () =>
-      checkQueueDepth(env, ctx, input.triggerReason === 'manual'),
+      checkQueueDepth(env, ctx, isForced(input.triggerReason), input.forceBatch),
     );
 
     // Pure step — wrapped so its result is journaled and the phase can't drift

@@ -614,9 +614,31 @@ api.post('/campaigns', async (c) => {
 
   if (!created) return err(c, 422, 'no_site', 'Tenant has no site to attach the campaign to');
 
-  // NOTE: the first-batch generation trigger (Strategist → specialist agents)
-  // is enqueued here in V1 via the Generation Workflow. V0 returns the created
-  // campaign immediately; the scheduled generation tick tops up its queue.
+  // First-batch generation: trigger immediately so a new campaign doesn't wait up
+  // to 6h for the next cron tick. product_launch campaigns get a slightly larger
+  // urgent batch. Runs in the background via waitUntil so creation returns right
+  // away; a generation failure (e.g. empty corpus) never blocks the create.
+  const genParams: GenerationParams = {
+    tenantId,
+    campaignId: String(created.id),
+    triggerReason: 'campaign_created',
+    forceBatch: created.type === 'product_launch' ? 3 : 2,
+  };
+  const genEnv = c.env as unknown as PipelineEnv;
+  c.executionCtx.waitUntil(
+    (async () => {
+      if (genEnv.GENERATION_WORKFLOW) {
+        await genEnv.GENERATION_WORKFLOW.create({ params: genParams });
+      } else {
+        await runGenerationPipeline(genEnv, genParams);
+      }
+    })().catch((e) =>
+      console.error(
+        '[campaign-create] first-batch generation failed:',
+        e instanceof Error ? e.message : e,
+      ),
+    ),
+  );
 
   const channelConfig = (created.channel_config ?? {}) as Record<string, any>;
   return c.json(
@@ -638,6 +660,7 @@ api.post('/campaigns', async (c) => {
         attributedLeads: 0,
         createdAt: created.created_at,
       },
+      generationTriggered: true,
     },
     201,
   );
@@ -662,6 +685,18 @@ api.patch('/campaigns/:id', async (c) => {
     const sets = [sql`updated_at = now()`];
     if (body.status) sets.push(sql`status = ${body.status}::marketing.campaign_status`);
     if (typeof body.name === 'string') sets.push(sql`name = ${body.name}`);
+    if (body.type) sets.push(sql`type = ${body.type}::marketing.campaign_type`);
+    // audienceBrief is stored as jsonb { text }, mirroring POST /api/campaigns —
+    // accept either a plain string (edit form) or a pre-shaped object.
+    if ('audienceBrief' in body)
+      sets.push(
+        sql`audience_brief = ${JSON.stringify(
+          typeof body.audienceBrief === 'string'
+            ? { text: body.audienceBrief }
+            : (body.audienceBrief ?? {}),
+        )}::jsonb`,
+      );
+    if ('voiceModifier' in body) sets.push(sql`voice_modifier = ${body.voiceModifier ?? null}`);
     if ('goalValue' in body) sets.push(sql`goal_value = ${body.goalValue}`);
     if (body.channelConfig)
       sets.push(sql`channel_config = ${JSON.stringify(body.channelConfig)}::jsonb`);
@@ -670,7 +705,7 @@ api.patch('/campaigns/:id', async (c) => {
       UPDATE marketing.campaigns SET ${sql.join(sets, sql`, `)}
       WHERE id = ${id} AND tenant_id = ${tenantId}
       RETURNING id, name, type, status, goal_type, goal_value, launch_date,
-                channel_config, voice_modifier, created_at
+                audience_brief, language_config, channel_config, voice_modifier, created_at
     `);
     return r.rows[0] ?? null;
   });
@@ -686,8 +721,8 @@ api.patch('/campaigns/:id', async (c) => {
       goalType: updated.goal_type,
       goalValue: updated.goal_value ?? null,
       launchDate: updated.launch_date ?? null,
-      audienceBrief: {},
-      languageConfig: {},
+      audienceBrief: updated.audience_brief ?? {},
+      languageConfig: updated.language_config ?? {},
       channelConfig,
       voiceModifier: updated.voice_modifier ?? null,
       channels: Object.keys(channelConfig),
@@ -1919,8 +1954,14 @@ api.post('/publish/:draftId', async (c) => {
   });
   if (!row) return err(c, 404, 'not_found', 'Draft not found');
 
+  // Already published: a dedicated, unambiguous message (guards an accidental
+  // double-publish) rather than letting it fall through the generic gate below.
+  if (row.status === 'published') {
+    return err(c, 422, 'already_published', 'Draft has already been published');
+  }
+
   // Only an approved or scheduled draft may be published — reject pending_review,
-  // dismissed, failed, generating, or already-published drafts.
+  // dismissed, failed, or generating drafts.
   if (row.status !== 'approved' && row.status !== 'scheduled') {
     return err(c, 422, 'not_publishable', `Draft is '${row.status}' — only approved or scheduled drafts can be published`);
   }
