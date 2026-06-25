@@ -5,10 +5,13 @@ import {
   AlertTriangle,
   Loader2,
   Send,
+  Check,
 } from 'lucide-react'
 import { useDrafts, usePublishNow } from '@/lib/queries'
-import { channelMeta, SELECTABLE_CHANNELS } from '@/lib/channels'
+import { channelMeta } from '@/lib/channels'
 import { toApiError } from '@/lib/api'
+import { draftTitle, formatPublishAt } from '@/lib/format'
+import { useIsMobile } from '@/lib/use-media-query'
 import type { Draft } from '@/lib/types'
 import { DraftCard } from '@/components/DraftCard'
 import { Button } from '@/components/ui/button'
@@ -22,14 +25,86 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
+const CHIP_TITLE_MAX = 18
+
+// ── Calendar-only channel chip styling ───────────────────────────────
+// Deliberately local (NOT channels.ts) so we can fix the dot-color
+// collisions on the calendar without touching the shared channel meta:
+//   • LinkedIn (#3b82f6) and Facebook (#2563eb) were both blue
+//   • X (#0b0b0d) was near-black → invisible on the #000 page bg
+// Aliases (x↔twitter, blog↔wix-blog, email↔sendgrid) resolve to one entry.
+interface ChipStyle {
+  /** bg + text utility classes for the chip */
+  className: string
+  /** short glyph rendered before the title */
+  glyph: string
+}
+
+const CHANNEL_ALIASES: Record<string, string> = {
+  x: 'twitter',
+  twitter: 'twitter',
+  'wix-blog': 'blog',
+  blog: 'blog',
+  sendgrid: 'email',
+  email: 'email',
+}
+
+const CHIP_STYLES: Record<string, ChipStyle> = {
+  linkedin: { className: 'bg-[#7c3aed]/20 text-[#a78bfa]', glyph: 'in' },
+  twitter: { className: 'bg-[#1e1e2e] text-[#94a3b8]', glyph: '𝕏' },
+  email: { className: 'bg-[#f59e0b]/20 text-[#fbbf24]', glyph: '✉' },
+  blog: { className: 'bg-[#10b981]/20 text-[#34d399]', glyph: '✎' },
+  facebook: { className: 'bg-blue-900/30 text-blue-400', glyph: 'f' },
+  instagram: { className: 'bg-pink-900/30 text-pink-400', glyph: '◎' },
+}
+
+const CHIP_FALLBACK: ChipStyle = { className: 'bg-[#1e1e2e] text-[#94a3b8]', glyph: '•' }
+
+function chipStyle(channel: string): ChipStyle {
+  const canonical = CHANNEL_ALIASES[channel] ?? channel
+  return CHIP_STYLES[canonical] ?? CHIP_FALLBACK
+}
+
+function chipLabel(draft: Draft): string {
+  const title = draftTitle(draft).trim()
+  return title.length > CHIP_TITLE_MAX ? `${title.slice(0, CHIP_TITLE_MAX)}…` : title
+}
+
 function localDayKey(iso: string): string {
   const d = new Date(iso)
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+// ── Event chip ───────────────────────────────────────────────────────
+// Shared by the desktop grid and the mobile agenda so colours/labels can
+// never drift between the two views.
+function EventChip({ draft, onClick }: { draft: Draft; onClick: () => void }) {
+  const style = chipStyle(draft.channel)
+  const meta = channelMeta(draft.channel)
+  const published = draft.status === 'published'
+  return (
+    <button
+      onClick={onClick}
+      title={`${meta.label} · ${draft.status}`}
+      aria-label={`${meta.label} draft: ${draftTitle(draft)} (${draft.status})`}
+      className={cn(
+        'flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-xs transition-opacity hover:opacity-80',
+        style.className,
+      )}
+    >
+      <span aria-hidden className="shrink-0 font-semibold">{style.glyph}</span>
+      <span className="truncate">{chipLabel(draft)}</span>
+      {published && (
+        <Check aria-hidden className="ml-auto h-2.5 w-2.5 shrink-0 opacity-80" />
+      )}
+    </button>
+  )
+}
+
 export default function CalendarPage() {
   const today = new Date()
+  const isMobile = useIsMobile()
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth()) // 0-11
   const [selected, setSelected] = useState<Draft | null>(null)
@@ -60,6 +135,24 @@ export default function CalendarPage() {
     return out
   }, [year, month])
 
+  // Sorted day groups for the mobile agenda (ascending date, events sorted
+  // by publish time within each day).
+  const agendaDays = useMemo(() => {
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const out: { day: number; key: string; items: Draft[] }[] = []
+    for (let day = 1; day <= daysInMonth; day++) {
+      const key = `${year}-${pad(month + 1)}-${pad(day)}`
+      const items = byDay.get(key)
+      if (!items || items.length === 0) continue
+      const sorted = [...items].sort((a, b) =>
+        (a.publishAt ?? '').localeCompare(b.publishAt ?? ''),
+      )
+      out.push({ day, key, items: sorted })
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [byDay, year, month])
+
   function shift(delta: number) {
     let m = month + delta
     let y = year
@@ -74,15 +167,23 @@ export default function CalendarPage() {
     setMonth(today.getMonth())
   }
 
-  const pad = (n: number) => n.toString().padStart(2, '0')
+  function openDraft(d: Draft) {
+    publishNow.reset()
+    setSelected(d)
+  }
+
   const todayKey = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
+  const weekdayName = (key: string) => {
+    const [y, m, d] = key.split('-').map(Number)
+    return WEEKDAYS[new Date(y, m - 1, d).getDay()]
+  }
 
   return (
     <div className="animate-fade-in space-y-6">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Content calendar</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-semibold tracking-tight text-[#f1f5f9]">Content calendar</h1>
+          <p className="mt-1 text-xs text-[#64748b]">
             Scheduled &amp; published content across every channel
           </p>
         </div>
@@ -90,7 +191,7 @@ export default function CalendarPage() {
           <Button variant="ghost" size="icon" onClick={() => shift(-1)} aria-label="Previous month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="w-40 text-center text-sm font-semibold text-gray-200">
+          <div className="w-32 text-center text-sm font-semibold text-[#f1f5f9] sm:w-40">
             {MONTHS[month]} {year}
           </div>
           <Button variant="ghost" size="icon" onClick={() => shift(1)} aria-label="Next month">
@@ -103,75 +204,127 @@ export default function CalendarPage() {
       </header>
 
       {isError && (
-        <div className="glass-sm flex items-center gap-3 border-red-500/20 p-5 text-sm text-red-300">
+        <div className="glass-sm flex items-center gap-3 rounded-lg border border-red-500/20 p-5 text-sm text-red-300">
           <AlertTriangle className="h-5 w-5" />
           Failed to load calendar.
         </div>
       )}
 
-      <div className="glass overflow-hidden p-4">
-        <div className="grid grid-cols-7 gap-px">
-          {WEEKDAYS.map((d) => (
-            <div
-              key={d}
-              className="pb-2 text-center text-[11px] font-medium uppercase tracking-wider text-gray-600"
-            >
-              {d}
+      {isMobile ? (
+        // ── Mobile agenda / list view ──────────────────────────────────
+        <div className="rounded-lg border border-[#1e1e2e] bg-[#0a0a0f] p-3">
+          {isLoading ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="space-y-1.5">
+                  <Skeleton className="h-3 w-24 rounded" />
+                  <Skeleton className="h-6 w-full rounded" />
+                </div>
+              ))}
             </div>
-          ))}
+          ) : agendaDays.length === 0 ? (
+            <p className="py-8 text-center text-xs text-[#64748b]">
+              No scheduled or published content this month.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {agendaDays.map(({ day, key, items }) => {
+                const isToday = key === todayKey
+                return (
+                  <div key={key}>
+                    <div className="mb-1.5 flex items-baseline gap-2">
+                      <span
+                        className={cn(
+                          'text-sm font-semibold',
+                          isToday ? 'text-[#a78bfa]' : 'text-[#f1f5f9]',
+                        )}
+                      >
+                        {weekdayName(key)} {day}
+                      </span>
+                      {isToday && (
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-[#a78bfa]">
+                          Today
+                        </span>
+                      )}
+                      <span className="text-xs text-[#64748b]">
+                        {items.length} {items.length === 1 ? 'item' : 'items'}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {items.map((d) => (
+                        <div key={d.id} className="flex items-center gap-2">
+                          <span className="w-16 shrink-0 text-[11px] tabular-nums text-[#64748b]">
+                            {d.publishAt
+                              ? formatPublishAt(d.publishAt).replace(/^\S+ /, '')
+                              : '—'}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <EventChip draft={d} onClick={() => openDraft(d)} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-7 gap-1.5">
-          {cells.map((day, i) => {
-            if (day == null) return <div key={i} className="min-h-24 rounded-lg" />
-            const key = `${year}-${pad(month + 1)}-${pad(day)}`
-            const items = byDay.get(key) ?? []
-            const isToday = key === todayKey
-            return (
+      ) : (
+        // ── Desktop month grid ─────────────────────────────────────────
+        <div className="overflow-hidden rounded-lg border border-[#1e1e2e] bg-[#0a0a0f] p-4">
+          <div className="grid grid-cols-7 gap-px">
+            {WEEKDAYS.map((d) => (
               <div
-                key={i}
-                className={cn(
-                  'min-h-24 rounded-lg border border-white/[0.04] bg-white/[0.015] p-1.5 transition-colors',
-                  isToday && 'border-cyan-500/30 bg-cyan-500/[0.04]',
-                )}
+                key={d}
+                className="pb-2 text-center text-[11px] font-medium uppercase tracking-wider text-[#64748b]"
               >
+                {d}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {cells.map((day, i) => {
+              if (day == null) return <div key={i} className="min-h-24 rounded-lg" />
+              const key = `${year}-${pad(month + 1)}-${pad(day)}`
+              const items = byDay.get(key) ?? []
+              const isToday = key === todayKey
+              const visible = items.slice(0, 3)
+              const overflow = items.length - visible.length
+              return (
                 <div
+                  key={i}
                   className={cn(
-                    'mb-1 text-right text-xs',
-                    isToday ? 'font-bold text-cyan-300' : 'text-gray-500',
+                    'min-h-24 rounded-lg border border-[#1e1e2e] bg-[#0f0f1a] p-1.5 transition-colors',
+                    isToday && 'border-[#7c3aed]/40 bg-[#7c3aed]/[0.06]',
                   )}
                 >
-                  {day}
-                </div>
-                {isLoading ? (
-                  <Skeleton className="h-3 w-10 rounded-full" />
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {items.map((d) => {
-                      const meta = channelMeta(d.channel)
-                      return (
-                        <button
-                          key={d.id}
-                          onClick={() => {
-                            publishNow.reset()
-                            setSelected(d)
-                          }}
-                          title={`${meta.label} · ${d.status}`}
-                          aria-label={`${meta.label} draft`}
-                          className={cn(
-                            'h-3 w-3 rounded-full ring-1 ring-white/10 transition-transform hover:scale-125',
-                            d.status === 'published' && 'ring-2 ring-white/30',
-                          )}
-                          style={{ background: meta.dotStyle }}
-                        />
-                      )
-                    })}
+                  <div
+                    className={cn(
+                      'mb-1 text-right text-xs',
+                      isToday ? 'font-bold text-[#a78bfa]' : 'text-[#64748b]',
+                    )}
+                  >
+                    {day}
                   </div>
-                )}
-              </div>
-            )
-          })}
+                  {isLoading ? (
+                    <Skeleton className="h-4 w-full rounded" />
+                  ) : (
+                    <div className="space-y-0.5">
+                      {visible.map((d) => (
+                        <EventChip key={d.id} draft={d} onClick={() => openDraft(d)} />
+                      ))}
+                      {overflow > 0 && (
+                        <div className="px-1 text-xs text-[#64748b]">+{overflow} more</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       <Legend />
 
@@ -184,7 +337,7 @@ export default function CalendarPage() {
           <div className="space-y-4">
             <DraftCard draft={selected} readOnly />
             {selected.status === 'approved' && (
-              <div className="border-t border-white/[0.06] pt-4">
+              <div className="border-t border-[#1e1e2e] pt-4">
                 <Button
                   variant="purple"
                   className="w-full"
@@ -216,20 +369,38 @@ export default function CalendarPage() {
   )
 }
 
+const pad = (n: number) => n.toString().padStart(2, '0')
+
+// One legend entry per distinct chip colour (aliases collapsed) so the legend
+// always matches the chips actually rendered on the calendar.
+const LEGEND_ENTRIES: { channel: string; label: string }[] = [
+  { channel: 'linkedin', label: 'LinkedIn' },
+  { channel: 'twitter', label: 'X' },
+  { channel: 'email', label: 'Email' },
+  { channel: 'blog', label: 'Blog' },
+  { channel: 'facebook', label: 'Facebook' },
+  { channel: 'instagram', label: 'Instagram' },
+]
+
 function Legend() {
-  // Sourced from channels.ts so legend colours can never drift from the dots
-  // actually rendered on the calendar (which also use channelMeta dotStyle).
   return (
-    <div className="flex flex-wrap gap-4">
-      {SELECTABLE_CHANNELS.map((c) => (
-        <div key={c.key} className="flex items-center gap-1.5 text-xs text-gray-500">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#94a3b8]">
+      {LEGEND_ENTRIES.map(({ channel, label }) => {
+        const style = chipStyle(channel)
+        return (
           <span
-            className="h-2.5 w-2.5 rounded-full ring-1 ring-white/10"
-            style={{ background: c.dotStyle }}
-          />
-          {c.label}
-        </div>
-      ))}
+            key={channel}
+            className={cn('inline-flex items-center gap-1 rounded px-1.5 py-0.5', style.className)}
+          >
+            <span aria-hidden className="font-semibold">{style.glyph}</span>
+            {label}
+          </span>
+        )
+      })}
+      <span className="inline-flex items-center gap-1 text-[#64748b]">
+        <Check aria-hidden className="h-3 w-3" />
+        Published
+      </span>
     </div>
   )
 }

@@ -18,7 +18,7 @@ export function Progress({ value, max, className, barClassName }: ProgressProps)
     >
       <div
         className={cn(
-          'h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500',
+          'h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-500 transition-all duration-500',
           barClassName,
         )}
         style={{ width: `${pct}%` }}

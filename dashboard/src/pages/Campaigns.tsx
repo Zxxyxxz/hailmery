@@ -13,6 +13,9 @@ import {
   Sparkles,
   CheckCircle2,
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  Megaphone,
 } from 'lucide-react'
 import {
   useCampaigns,
@@ -77,8 +80,10 @@ export default function Campaigns() {
     <div className="animate-fade-in space-y-6">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Campaigns</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-100">
+            Campaigns
+          </h1>
+          <p className="mt-1 text-sm text-[#94a3b8]">
             Goals, cadence, and progress across every active initiative
           </p>
         </div>
@@ -87,8 +92,6 @@ export default function Campaigns() {
           New Campaign
         </Button>
       </header>
-
-      <TopicsCard onPick={(t) => setTopic(t)} />
 
       {isError && (
         <div className="glass-sm flex items-center gap-3 border-red-500/20 p-5 text-sm text-red-300">
@@ -105,13 +108,32 @@ export default function Campaigns() {
         </div>
       )}
 
-      {!isLoading && !isError && (
+      {!isLoading && !isError && (campaigns ?? []).length === 0 && (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-[#1e1e2e] bg-[#0f0f1a] px-6 py-14 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#7c3aed]/15">
+            <Megaphone className="h-6 w-6 text-violet-300" />
+          </div>
+          <h2 className="text-sm font-semibold text-gray-100">No campaigns yet</h2>
+          <p className="max-w-sm text-sm text-[#94a3b8]">
+            Spin up your first campaign to set a goal, channels, and cadence —
+            generation kicks off on the first batch.
+          </p>
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4" />
+            New Campaign
+          </Button>
+        </div>
+      )}
+
+      {!isLoading && !isError && (campaigns ?? []).length > 0 && (
         <div className="grid gap-4 md:grid-cols-2">
           {(campaigns ?? []).map((c) => (
             <CampaignCard key={c.id} campaign={c} onEdit={(camp) => setEditing(camp)} />
           ))}
         </div>
       )}
+
+      <TopicsCard onPick={(t) => setTopic(t)} />
 
       <NewCampaignDialog open={open} onClose={() => setOpen(false)} />
       <EditCampaignDialog campaign={editing} onClose={() => setEditing(null)} />
@@ -131,6 +153,7 @@ const URGENCY_VARIANT: Record<TopicUrgency, BadgeProps['variant']> = {
 function TopicsCard({ onPick }: { onPick: (t: IntelligenceTopic) => void }) {
   const { data: brief, isLoading, isError } = useIntelligence()
   const refresh = useRefreshIntelligence()
+  const [expanded, setExpanded] = useState(false)
 
   const topics = brief?.topics ?? []
   const weekLabel = brief?.weekOf
@@ -141,88 +164,106 @@ function TopicsCard({ onPick }: { onPick: (t: IntelligenceTopic) => void }) {
     : null
 
   return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500/15">
-            <Newspaper className="h-4 w-4 text-cyan-300" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-gray-100">
-              This week&apos;s topics
-            </h2>
-            <p className="text-xs text-gray-500">
-              {weekLabel
-                ? `AI-security intelligence · week of ${weekLabel}`
-                : 'AI-security intelligence brief'}
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => refresh.mutate()}
+    <section className="rounded-lg border border-[#1e1e2e] bg-[#0a0a0f]">
+      <div className="flex w-full items-center justify-between gap-3 p-3">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+        >
+          <Newspaper className="h-4 w-4 shrink-0 text-violet-300" />
+          <span className="truncate text-sm font-semibold text-[#f1f5f9]">
+            This week&apos;s topics
+          </span>
+          {topics.length > 0 && (
+            <span className="shrink-0 text-xs text-violet-300">
+              {topics.length} {topics.length === 1 ? 'topic' : 'topics'}
+            </span>
+          )}
+          {weekLabel && (
+            <span className="hidden shrink-0 text-xs text-[#94a3b8] sm:inline">
+              · week of {weekLabel}
+            </span>
+          )}
+          {expanded ? (
+            <ChevronUp className="ml-auto h-4 w-4 shrink-0 text-[#64748b]" />
+          ) : (
+            <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-[#64748b]" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (!refresh.isPending) refresh.mutate()
+          }}
           disabled={refresh.isPending}
+          title="Re-research this week's AI-security news"
+          className="flex shrink-0 items-center gap-1.5 rounded-md border border-[#1e1e2e] px-2 py-1 text-xs text-[#94a3b8] transition-colors hover:bg-white/[0.06] hover:text-[#f1f5f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 disabled:opacity-50"
         >
           {refresh.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="h-3.5 w-3.5" />
           )}
-          Refresh
-        </Button>
+          {refresh.isPending ? 'Refreshing…' : 'Refresh'}
+        </button>
       </div>
 
-      {(isLoading || refresh.isPending) && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-28 rounded-xl" />
-          ))}
+      {expanded && (
+        <div className="border-t border-[#1e1e2e] p-3">
+          {(isLoading || refresh.isPending) && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-28 rounded-xl" />
+              ))}
+            </div>
+          )}
+
+          {isError && !refresh.isPending && (
+            <p className="text-sm text-red-300">
+              Failed to load this week&apos;s topics.
+            </p>
+          )}
+
+          {!isLoading && !isError && !refresh.isPending && topics.length === 0 && (
+            <div className="rounded-xl border border-dashed border-[#1e1e2e] p-6 text-center text-sm text-[#94a3b8]">
+              No intelligence brief yet. Hit{' '}
+              <span className="text-gray-300">Refresh</span> to research this
+              week&apos;s AI-security news.
+            </div>
+          )}
+
+          {!refresh.isPending && topics.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {topics.map((t, i) => (
+                <button
+                  key={i}
+                  onClick={() => onPick(t)}
+                  className="group flex flex-col rounded-xl border border-[#1e1e2e] bg-white/[0.02] p-3.5 text-left transition-colors hover:border-[#7c3aed]/40 hover:bg-white/[0.04]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant={URGENCY_VARIANT[t.urgency]}>{t.urgency}</Badge>
+                    <span className="text-[10px] uppercase tracking-wide text-[#64748b]">
+                      {t.suggested_channel}
+                    </span>
+                  </div>
+                  <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-gray-100">
+                    {t.topic}
+                  </h3>
+                  <p className="mt-1 line-clamp-2 text-xs text-[#94a3b8]">
+                    {t.why_relevant || t.source_summary}
+                  </p>
+                  <span className="mt-2 inline-flex items-center gap-1 text-xs text-violet-300 opacity-0 transition-opacity group-hover:opacity-100">
+                    Create now <ArrowRight className="h-3 w-3" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
-
-      {isError && !refresh.isPending && (
-        <p className="mt-4 text-sm text-red-300">
-          Failed to load this week&apos;s topics.
-        </p>
-      )}
-
-      {!isLoading && !isError && !refresh.isPending && topics.length === 0 && (
-        <div className="mt-4 rounded-xl border border-dashed border-white/[0.08] p-6 text-center text-sm text-gray-500">
-          No intelligence brief yet. Hit{' '}
-          <span className="text-gray-300">Refresh</span> to research this
-          week&apos;s AI-security news.
-        </div>
-      )}
-
-      {!refresh.isPending && topics.length > 0 && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {topics.map((t, i) => (
-            <button
-              key={i}
-              onClick={() => onPick(t)}
-              className="group flex flex-col rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 text-left transition-colors hover:border-cyan-500/30 hover:bg-white/[0.04]"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <Badge variant={URGENCY_VARIANT[t.urgency]}>{t.urgency}</Badge>
-                <span className="text-[10px] uppercase tracking-wide text-gray-600">
-                  {t.suggested_channel}
-                </span>
-              </div>
-              <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-gray-100">
-                {t.topic}
-              </h3>
-              <p className="mt-1 line-clamp-2 text-xs text-gray-500">
-                {t.why_relevant || t.source_summary}
-              </p>
-              <span className="mt-2 inline-flex items-center gap-1 text-xs text-cyan-400 opacity-0 transition-opacity group-hover:opacity-100">
-                Create now <ArrowRight className="h-3 w-3" />
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </Card>
+    </section>
   )
 }
 
@@ -394,29 +435,29 @@ function CampaignCard({
           </div>
         </div>
         {campaign.type === 'product_launch' && campaign.launchDate && (
-          <div className="flex items-center gap-1 text-right text-xs text-gray-500">
+          <div className="flex items-center gap-1 text-right text-xs text-[#94a3b8]">
             <Rocket className="h-3.5 w-3.5" />
             {new Date(campaign.launchDate).toLocaleDateString()}
           </div>
         )}
       </div>
 
-      <div className="mt-4 flex items-center gap-1.5 text-sm text-gray-400">
-        <Target className="h-4 w-4 text-gray-500" />
+      <div className="mt-4 flex items-center gap-1.5 text-sm text-[#94a3b8]">
+        <Target className="h-4 w-4 text-[#94a3b8]" />
         {goalValue > 0 ? (
           <span>
             <span className="font-semibold text-gray-200">{goalValue}</span>{' '}
             {campaign.goalType}
           </span>
         ) : (
-          <span className="text-gray-600">No goal set</span>
+          <span className="text-[#64748b]">No goal set</span>
         )}
       </div>
 
       {goalValue > 0 && (
         <div className="mt-2">
           <Progress value={campaign.attributedLeads} max={goalValue} />
-          <div className="mt-1 text-right text-xs text-gray-500">
+          <div className="mt-1 text-right text-xs text-[#94a3b8]">
             {campaign.attributedLeads} / {goalValue} attributed
           </div>
         </div>
@@ -430,10 +471,10 @@ function CampaignCard({
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-500">
+      <div className="mt-4 flex flex-wrap gap-3 text-xs text-[#94a3b8]">
         <span><span className="text-amber-300">{campaign.counts.pending}</span> pending</span>
         <span><span className="text-emerald-300">{campaign.counts.approved}</span> approved</span>
-        <span><span className="text-cyan-300">{campaign.counts.published}</span> published</span>
+        <span><span className="text-violet-300">{campaign.counts.published}</span> published</span>
         <span><span className="text-gray-300">{campaign.counts.total}</span> total</span>
       </div>
 
@@ -635,7 +676,7 @@ function NewCampaignDialog({
 
         <div>
           <Label>Channels &amp; weekly cadence</Label>
-          <div className="space-y-2 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+          <div className="space-y-2 rounded-xl border border-[#1e1e2e] bg-white/[0.02] p-3">
             {SELECTABLE_CHANNELS.map((ch) => {
               const active = ch.key in channels
               return (
@@ -646,7 +687,7 @@ function NewCampaignDialog({
                     label={ch.label}
                   />
                   {active && (
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <div className="flex items-center gap-2 text-xs text-[#94a3b8]">
                       <Input
                         type="number"
                         min={1}

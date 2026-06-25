@@ -31,20 +31,20 @@ export function TagInput({ value, onChange, placeholder, className }: TagInputPr
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.04] px-2.5 py-2 focus-within:border-cyan-500/40 focus-within:ring-2 focus-within:ring-cyan-500/30',
+        'flex flex-wrap items-center gap-1.5 rounded-xl border border-[#1e1e2e] bg-white/[0.04] px-2.5 py-2 focus-within:border-violet-500/50 focus-within:ring-2 focus-within:ring-violet-500/30',
         className,
       )}
     >
       {value.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center gap-1 rounded-lg bg-cyan-500/15 px-2 py-0.5 text-xs text-cyan-200"
+          className="inline-flex items-center gap-1 rounded-lg bg-violet-500/15 px-2 py-0.5 text-xs text-violet-200"
         >
           {tag}
           <button
             type="button"
             onClick={() => onChange(value.filter((t) => t !== tag))}
-            className="text-cyan-300/60 hover:text-cyan-200"
+            className="text-violet-300/60 hover:text-violet-200"
           >
             <X className="h-3 w-3" />
           </button>
@@ -56,7 +56,7 @@ export function TagInput({ value, onChange, placeholder, className }: TagInputPr
         onKeyDown={onKey}
         onBlur={() => add(draft)}
         placeholder={value.length ? '' : placeholder}
-        className="min-w-[8rem] flex-1 bg-transparent text-sm text-gray-100 placeholder-gray-600 focus:outline-none"
+        className="min-w-[8rem] flex-1 bg-transparent text-sm text-[#f1f5f9] placeholder-[#64748b] focus:outline-none"
       />
     </div>
   )

@@ -3,15 +3,15 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 disabled:opacity-50 disabled:pointer-events-none',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 disabled:opacity-50 disabled:pointer-events-none',
   {
     variants: {
       variant: {
         default:
-          'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20 hover:from-cyan-400 hover:to-blue-500 hover:shadow-cyan-400/30 hover:scale-[1.02] active:scale-[0.98]',
+          'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/20 hover:from-violet-400 hover:to-purple-500 hover:shadow-violet-400/30 hover:scale-[1.02] active:scale-[0.98]',
         secondary:
-          'bg-white/[0.06] text-gray-200 border border-white/[0.08] hover:bg-white/[0.1]',
-        ghost: 'text-gray-400 hover:text-gray-100 hover:bg-white/[0.06]',
+          'bg-white/[0.06] text-gray-200 border border-[#1e1e2e] hover:bg-white/[0.1]',
+        ghost: 'text-[#94a3b8] hover:text-[#f1f5f9] hover:bg-white/[0.06]',
         outline:
           'border border-white/[0.12] text-gray-300 hover:bg-white/[0.05]',
         success:

@@ -52,7 +52,7 @@ export function Dialog({
         <button
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-white/[0.06] hover:text-gray-200"
+          className="absolute right-4 top-4 rounded-lg p-1.5 text-[#94a3b8] transition-colors hover:bg-white/[0.06] hover:text-[#f1f5f9]"
         >
           <X className="h-4 w-4" />
         </button>
@@ -62,7 +62,7 @@ export function Dialog({
               <h2 className="text-lg font-semibold text-gray-100">{title}</h2>
             )}
             {description && (
-              <p className="mt-1 text-sm text-gray-500">{description}</p>
+              <p className="mt-1 text-sm text-[#94a3b8]">{description}</p>
             )}
           </div>
         )}

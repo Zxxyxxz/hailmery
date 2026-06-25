@@ -64,6 +64,14 @@ export function fromDatetimeLocal(value: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString()
 }
 
+/** Whole days elapsed since an ISO timestamp (0 if missing/invalid). */
+export function daysSince(iso: string | null): number {
+  if (!iso) return 0
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return 0
+  return Math.max(0, Math.floor((Date.now() - then) / 86_400_000))
+}
+
 /** Guardian badge tier per the queue spec: ≥0.97 green, ≥0.92 amber, else red. */
 export function guardianTier(score: number | null): 'green' | 'amber' | 'red' | null {
   if (score == null) return null

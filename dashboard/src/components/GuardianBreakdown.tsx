@@ -59,9 +59,9 @@ function Row({
   children?: React.ReactNode
 }) {
   return (
-    <div className="border-t border-white/[0.05] pt-2.5 first:border-t-0 first:pt-0">
+    <div className="border-t border-[#1e1e2e] pt-2.5 first:border-t-0 first:pt-0">
       <div className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+        <Icon className="h-3.5 w-3.5 shrink-0 text-[#94a3b8]" />
         <span className="font-medium text-gray-300">{label}</span>
         <span className={cn('ml-auto font-semibold tabular-nums', statusTone)}>{status}</span>
       </div>
@@ -78,7 +78,7 @@ function Detail({ tone = 'gray', children }: { tone?: 'gray' | 'amber' | 'red' |
         ? 'text-amber-300/90'
         : tone === 'green'
           ? 'text-emerald-300/90'
-          : 'text-gray-400'
+          : 'text-[#94a3b8]'
   return <p className={cn('flex items-start gap-1.5 leading-relaxed', cls)}>{children}</p>
 }
 
@@ -103,7 +103,7 @@ function PlatformRow({ r }: { r: PlatformRulesResult }) {
 
 function FactualRow({ r }: { r: FactualResult }) {
   if (r.skipped) {
-    return <Row icon={FileCheck} label="Factual" status="—" statusTone="text-gray-500"><Detail>{r.skipReason}</Detail></Row>
+    return <Row icon={FileCheck} label="Factual" status="—" statusTone="text-[#94a3b8]"><Detail>{r.skipReason}</Detail></Row>
   }
   const tone = scoreTone(r.score)
   return (
@@ -122,7 +122,7 @@ function FactualRow({ r }: { r: FactualResult }) {
 
 function BrandVoiceRow({ r }: { r: BrandVoiceResult }) {
   if (r.skipped) {
-    return <Row icon={Mic} label="Brand Voice" status="—" statusTone="text-gray-500"><Detail>{r.skipReason}</Detail></Row>
+    return <Row icon={Mic} label="Brand Voice" status="—" statusTone="text-[#94a3b8]"><Detail>{r.skipReason}</Detail></Row>
   }
   const tone = scoreTone(r.score)
   return (
@@ -140,15 +140,15 @@ function BrandVoiceRow({ r }: { r: BrandVoiceResult }) {
 
 function AudienceRow({ r }: { r: AudienceFitResult }) {
   if (r.notApplicable) {
-    return <Row icon={Users} label="Audience Fit" status="N/A" statusTone="text-gray-500"><Detail>Not applicable for this channel.</Detail></Row>
+    return <Row icon={Users} label="Audience Fit" status="N/A" statusTone="text-[#94a3b8]"><Detail>Not applicable for this channel.</Detail></Row>
   }
   if (r.skipped) {
-    return <Row icon={Users} label="Audience Fit" status="—" statusTone="text-gray-500"><Detail>{r.skipReason}</Detail></Row>
+    return <Row icon={Users} label="Audience Fit" status="—" statusTone="text-[#94a3b8]"><Detail>{r.skipReason}</Detail></Row>
   }
   const tone = scoreTone(r.score)
   return (
     <Row icon={Users} label="Audience Fit" status={r.score.toFixed(2)} statusTone={TONE_TEXT[tone]}>
-      {r.personaMatch && <Detail tone="gray"><span className="text-gray-500">Best for:</span>&nbsp;{r.personaMatch}</Detail>}
+      {r.personaMatch && <Detail tone="gray"><span className="text-[#94a3b8]">Best for:</span>&nbsp;{r.personaMatch}</Detail>}
       {r.flags.map((f, i) => (
         <Detail key={i} tone="amber">
           <span>{f.issue}{f.suggestion ? <> → <span className="text-gray-300">{f.suggestion}</span></> : null}</span>
@@ -161,7 +161,7 @@ function AudienceRow({ r }: { r: AudienceFitResult }) {
 
 function PerformanceRow({ r }: { r: PerformancePredictionResult }) {
   if (r.skipped) {
-    return <Row icon={TrendingUp} label="Performance" status="—" statusTone="text-gray-500"><Detail>{r.skipReason}</Detail></Row>
+    return <Row icon={TrendingUp} label="Performance" status="—" statusTone="text-[#94a3b8]"><Detail>{r.skipReason}</Detail></Row>
   }
   const tone = r.predictedScore >= 1.2 ? 'green' : r.predictedScore >= 0.8 ? 'amber' : 'red'
   return (
@@ -198,7 +198,7 @@ export function GuardianBreakdownPanel({
   const overallTone = scoreTone(breakdown.overall)
 
   return (
-    <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-xs">
+    <div className="mt-4 rounded-xl border border-[#1e1e2e] bg-white/[0.02] p-4 text-xs">
       <div className="flex items-center gap-2">
         <span className="font-medium text-gray-300">Guardian breakdown</span>
         <span className={cn('font-semibold tabular-nums', TONE_TEXT[overallTone])}>
@@ -212,7 +212,7 @@ export function GuardianBreakdownPanel({
         <Button
           size="sm"
           variant="ghost"
-          className="ml-auto h-7 text-gray-400 hover:text-gray-200"
+          className="ml-auto h-7 text-[#94a3b8] hover:text-gray-200"
           onClick={handleRecheck}
           disabled={recheck.isPending}
         >
@@ -243,16 +243,16 @@ export function GuardianBreakdownPanel({
       </div>
 
       {breakdown.missingContext.length > 0 && (
-        <div className="mt-3 border-t border-white/[0.05] pt-3">
-          <div className="flex items-center gap-1.5 font-medium text-gray-400">
+        <div className="mt-3 border-t border-[#1e1e2e] pt-3">
+          <div className="flex items-center gap-1.5 font-medium text-[#94a3b8]">
             <Settings2 className="h-3.5 w-3.5" /> Set up to unlock more
           </div>
           <div className="mt-1.5 space-y-1">
             {breakdown.missingContext.map((m, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-gray-400">
-                <ArrowRight className="mt-0.5 h-3 w-3 shrink-0 text-gray-600" />
+              <div key={i} className="flex items-start gap-1.5 text-[#94a3b8]">
+                <ArrowRight className="mt-0.5 h-3 w-3 shrink-0 text-[#64748b]" />
                 {m.actionUrl ? (
-                  <Link to={m.actionUrl} className="text-cyan-400 hover:text-cyan-300">
+                  <Link to={m.actionUrl} className="text-violet-400 hover:text-violet-300">
                     {m.action}
                   </Link>
                 ) : (

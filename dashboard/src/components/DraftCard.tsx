@@ -189,7 +189,7 @@ export function DraftCard({
             <button
               onClick={() => setShowGuardian((v) => !v)}
               aria-label="Toggle guardian breakdown"
-              className="rounded-md p-1 text-gray-500 transition-colors hover:bg-white/[0.06] hover:text-gray-300"
+              className="rounded-md p-1 text-[#94a3b8] transition-colors hover:bg-white/[0.06] hover:text-gray-300"
             >
               {showGuardian ? (
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -259,8 +259,8 @@ export function DraftCard({
       </div>
 
       {/* Scheduled time */}
-      <div className="mt-4 flex items-center gap-2 text-sm text-gray-400">
-        <Clock className="h-4 w-4 text-gray-500" />
+      <div className="mt-4 flex items-center gap-2 text-sm text-[#94a3b8]">
+        <Clock className="h-4 w-4 text-[#94a3b8]" />
         <span>{formatPublishAt(draft.publishAt)}</span>
         {!readOnly && (
           <Popover
@@ -268,7 +268,7 @@ export function DraftCard({
             className="w-72"
             trigger={
               <button
-                className="rounded-md p-1 text-gray-500 transition-colors hover:bg-white/[0.06] hover:text-gray-300"
+                className="rounded-md p-1 text-[#94a3b8] transition-colors hover:bg-white/[0.06] hover:text-gray-300"
                 aria-label="Edit schedule"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -277,7 +277,7 @@ export function DraftCard({
           >
             {({ close }) => (
               <div className="space-y-3">
-                <div className="text-xs font-medium text-gray-400">
+                <div className="text-xs font-medium text-[#94a3b8]">
                   Reschedule
                 </div>
                 <Input
@@ -298,14 +298,14 @@ export function DraftCard({
           </Popover>
         )}
         {/* Subtle "generated N ago" stamp, right-aligned on the clock row. */}
-        <span className="ml-auto text-xs text-gray-400 opacity-50">
+        <span className="ml-auto text-xs text-[#64748b]">
           Generated {formatTimeAgo(draft.createdAt)}
         </span>
       </div>
 
       {/* Actions */}
       {!readOnly && (
-        <div className="mt-5 flex items-center gap-2 border-t border-white/[0.06] pt-4">
+        <div className="mt-5 flex items-center gap-2 border-t border-[#1e1e2e] pt-4">
           {editing ? (
             <>
               <Button
@@ -343,7 +343,7 @@ export function DraftCard({
               >
                 {({ close }) => (
                   <div className="space-y-3">
-                    <div className="text-xs font-medium text-gray-400">
+                    <div className="text-xs font-medium text-[#94a3b8]">
                       Publish at
                     </div>
                     <Input
@@ -401,7 +401,7 @@ export function DraftCard({
               >
                 {({ close }) => (
                   <div className="space-y-2">
-                    <div className="text-xs font-medium text-gray-400">
+                    <div className="text-xs font-medium text-[#94a3b8]">
                       Why dismiss this draft?
                     </div>
                     <div className="space-y-1">
@@ -413,7 +413,7 @@ export function DraftCard({
                             'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
                             reason === r
                               ? 'bg-red-500/15 text-red-300'
-                              : 'text-gray-400 hover:bg-white/[0.05]',
+                              : 'text-[#94a3b8] hover:bg-white/[0.05]',
                           )}
                         >
                           <span
@@ -464,7 +464,7 @@ export function DraftCard({
               >
                 {({ close }) => (
                   <div className="space-y-3">
-                    <div className="text-xs font-medium text-gray-400">
+                    <div className="text-xs font-medium text-[#94a3b8]">
                       Scheduled to publish at
                     </div>
                     <Input
@@ -472,7 +472,7 @@ export function DraftCard({
                       value={scheduleAt}
                       onChange={(e) => setScheduleAt(e.target.value)}
                     />
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-[#94a3b8]">
                       We&apos;ll publish this automatically at the scheduled
                       time — no need to send it manually.
                     </div>
@@ -544,7 +544,7 @@ function EmailRecipients({ draftId, enabled }: { draftId: string; enabled: boole
   if (!enabled) return null
   if (isLoading) {
     return (
-      <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+      <div className="mt-2 flex items-center gap-1.5 text-xs text-[#94a3b8]">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Resolving recipients…
       </div>
@@ -563,8 +563,8 @@ function EmailRecipients({ draftId, enabled }: { draftId: string; enabled: boole
 
   const source = data.listSource ? LIST_SOURCE_LABEL[data.listSource] : null
   return (
-    <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
-      <Users className="h-3.5 w-3.5 text-gray-500" />
+    <div className="mt-2 flex items-center gap-1.5 text-xs text-[#94a3b8]">
+      <Users className="h-3.5 w-3.5 text-[#94a3b8]" />
       <span>
         {data.recipientCount.toLocaleString()}{' '}
         {data.recipientCount === 1 ? 'contact' : 'contacts'}
@@ -594,14 +594,14 @@ function PreviewBody({
         <h3 className="text-base font-semibold text-gray-100">
           {draftTitle(draft)}
         </h3>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-400">
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#94a3b8]">
           {expanded ? body : preview}
           {!expanded && body.length > BLOG_PREVIEW_CHARS && '…'}
         </p>
         {body.length > BLOG_PREVIEW_CHARS && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300"
+            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
           >
             {expanded ? (
               <>
@@ -621,14 +621,14 @@ function PreviewBody({
   if (meta.kind === 'email') {
     return (
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-gray-600">
+        <div className="text-[11px] uppercase tracking-wide text-[#64748b]">
           Subject
         </div>
         <h3 className="text-base font-semibold text-gray-100">
           {draft.payload.subject ?? '(no subject)'}
         </h3>
         {draft.payload.previewText && (
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-[#94a3b8]">
             {draft.payload.previewText}
           </p>
         )}
@@ -673,7 +673,7 @@ function EditFields(props: {
           <div
             className={cn(
               'mt-1 text-right text-xs',
-              props.overLimit ? 'text-red-400' : 'text-gray-500',
+              props.overLimit ? 'text-red-400' : 'text-[#94a3b8]',
             )}
           >
             {props.charCount}/{props.charLimit}

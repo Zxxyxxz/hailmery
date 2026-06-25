@@ -1,3 +1,5 @@
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -17,8 +19,14 @@ import {
 import { channelMeta } from '@/lib/channels'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Select } from '@/components/ui/select'
 import { ChannelIcon } from '@/components/ChannelIcon'
-import type { TopContentItem } from '@/lib/types'
+import { cn } from '@/lib/utils'
+import type {
+  ChannelPerformance,
+  PublishedByDay,
+  TopContentItem,
+} from '@/lib/types'
 
 // The four main channels, in display order, with spec colors sourced from the
 // shared channel meta (LinkedIn=blue, X=black, Blog=green, Email=orange).
@@ -34,10 +42,37 @@ const CHART_FILL: Record<MainChannel, string> = {
   email: channelMeta('email').dotStyle,
 }
 
+// Client-side chart windows. The backend always returns the full 14-day series
+// (it accepts no params), so these options only slice the rows we already have.
+// A 30-day option is intentionally omitted — the API never returns >14 days, so
+// it would render a fabricated half-empty window.
+const RANGE_OPTIONS = [
+  { value: 7, label: 'Last 7 days' },
+  { value: 14, label: 'Last 14 days' },
+] as const
+
 export default function Analytics() {
   const { data: summary, isLoading: summaryLoading } = useAnalyticsSummary()
   const { data: top, isLoading: topLoading } = useTopContent()
   const { data: keywords } = useKeywords()
+
+  // ── client-side filters (no API params) ──
+  const [rangeDays, setRangeDays] = useState<number>(14)
+  // Which channels are visible in the chart + scorecard row. Empty set = all on.
+  const [hidden, setHidden] = useState<Set<MainChannel>>(new Set())
+  const activeChannels = useMemo(
+    () => MAIN_CHANNELS.filter((ch) => !hidden.has(ch)),
+    [hidden],
+  )
+  const toggleChannel = (ch: MainChannel) =>
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(ch)) next.delete(ch)
+      else next.add(ch)
+      // Don't allow hiding every channel — keep at least one on.
+      if (next.size === MAIN_CHANNELS.length) return prev
+      return next
+    })
 
   const stats = [
     {
@@ -48,7 +83,7 @@ export default function Analytics() {
     {
       label: 'Published',
       value: summary?.published_count ?? 0,
-      color: 'text-cyan-400',
+      color: 'text-violet-400',
     },
     {
       label: 'Avg guardian',
@@ -60,11 +95,32 @@ export default function Analytics() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-100">Analytics</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Unified performance across channels
-        </p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[#f1f5f9]">
+            Analytics
+          </h1>
+          <p className="mt-1 text-sm text-[#94a3b8]">
+            Unified performance across channels
+          </p>
+        </div>
+        {/* Client-side controls — these slice/filter already-fetched data; they
+            never call the API with params. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <ChannelFilter active={activeChannels} onToggle={toggleChannel} />
+          <Select
+            aria-label="Chart window"
+            className="w-auto py-2 pr-9 text-xs"
+            value={rangeDays}
+            onChange={(e) => setRangeDays(Number(e.target.value))}
+          >
+            {RANGE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+        </div>
       </header>
 
       {/* SECTION 1 — summary stats */}
@@ -72,36 +128,49 @@ export default function Analytics() {
         {stats.map((c) => (
           <Card key={c.label} className="p-5">
             <div className={`text-2xl font-bold ${c.color}`}>{c.value}</div>
-            <div className="mt-1 text-xs text-gray-500">{c.label}</div>
+            <div className="mt-1 text-xs text-[#64748b]">{c.label}</div>
           </Card>
         ))}
       </div>
 
-      {/* SECTION 2 — performance chart */}
+      {/* SECTION 2 — channel scorecard row (moved above the chart) */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {activeChannels.map((ch) => (
+          <ChannelScorecard
+            key={ch}
+            channel={ch}
+            perf={summary?.channel_performance.find((p) => p.channel === ch)}
+          />
+        ))}
+      </div>
+
+      {/* SECTION 3 — performance chart */}
       <Card className="p-5">
         <div className="mb-4 flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-200">
-            Posts published — last 14 days
+          <BarChart3 className="h-4 w-4 text-[#94a3b8]" />
+          <h2 className="text-sm font-semibold text-[#f1f5f9]">
+            Posts published — last {rangeDays} days
           </h2>
         </div>
         <PerformanceChart
           data={summary?.published_by_day ?? []}
           loading={summaryLoading}
+          rangeDays={rangeDays}
+          channels={activeChannels}
         />
       </Card>
 
-      {/* SECTION 3 — top performing content */}
+      {/* SECTION 4 — top performing content */}
       <Card className="p-5">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-gray-400" />
-            <h2 className="text-sm font-semibold text-gray-200">
+            <TrendingUp className="h-4 w-4 text-[#94a3b8]" />
+            <h2 className="text-sm font-semibold text-[#f1f5f9]">
               Top performing content
             </h2>
           </div>
           {top && !top.hasMetrics && (
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-[#64748b]">
               Performance data updates nightly
             </span>
           )}
@@ -113,52 +182,108 @@ export default function Analytics() {
         />
       </Card>
 
-      {/* SECTION 4 — GSC keyword intelligence */}
+      {/* SECTION 5 — GSC keyword intelligence */}
       <Card className="p-5">
         <div className="mb-4 flex items-center gap-2">
-          <Search className="h-4 w-4 text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-200">
+          <Search className="h-4 w-4 text-[#94a3b8]" />
+          <h2 className="text-sm font-semibold text-[#f1f5f9]">
             Search keyword intelligence
           </h2>
         </div>
         <KeywordsTable keywords={keywords ?? []} />
       </Card>
+    </div>
+  )
+}
 
-      {/* SECTION 5 — channel performance summary */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {MAIN_CHANNELS.map((ch) => {
-          const perf = summary?.channel_performance.find(
-            (p) => p.channel === ch,
-          )
-          const meta = channelMeta(ch)
-          return (
-            <Card key={ch} className="p-5">
-              <div className="flex items-center gap-2">
-                <ChannelIcon channel={ch} />
-                <span className="text-sm font-semibold text-gray-200">
-                  {meta.label}
-                </span>
-              </div>
-              <div className="mt-3 space-y-1.5">
-                <Stat label="Posts published" value={perf?.posts ?? 0} />
-                <Stat
-                  label="Avg impressions"
-                  value={(perf?.avgImpressions ?? 0).toLocaleString()}
-                />
-                <Stat
-                  label="Avg engagement rate"
-                  value={`${(((perf?.engagementRate ?? 0) * 100)).toFixed(1)}%`}
-                />
-              </div>
-            </Card>
-          )
-        })}
+// ── channel filter (client-side multi-toggle) ───────────────────────
+
+function ChannelFilter({
+  active,
+  onToggle,
+}: {
+  active: MainChannel[]
+  onToggle: (ch: MainChannel) => void
+}) {
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      role="group"
+      aria-label="Filter channels"
+    >
+      {MAIN_CHANNELS.map((ch) => {
+        const on = active.includes(ch)
+        return (
+          <button
+            key={ch}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onToggle(ch)}
+            title={`${on ? 'Hide' : 'Show'} ${channelMeta(ch).label}`}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+              on
+                ? 'border-violet-500/40 bg-violet-500/15 text-[#f1f5f9]'
+                : 'border-[#1e1e2e] bg-[#0f0f1a] text-[#64748b] hover:text-[#94a3b8]',
+            )}
+          >
+            <ChannelIcon channel={ch} />
+            <span className="hidden sm:inline">{channelMeta(ch).label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── compact channel scorecard ───────────────────────────────────────
+
+function ChannelScorecard({
+  channel,
+  perf,
+}: {
+  channel: MainChannel
+  perf: ChannelPerformance | undefined
+}) {
+  const meta = channelMeta(channel)
+  const rawRate = (perf?.engagementRate ?? 0) * 100
+  // Engagement rates can exceed 100% when impression backfills lag behind
+  // engagement events (or duplicate events get counted). Clamp the display and
+  // flag clamped values rather than showing an impossible figure like 111.1%.
+  const clamped = rawRate > 100
+  const shownRate = Math.min(rawRate, 100)
+
+  return (
+    <div className="rounded-lg border border-[#1e1e2e] bg-[#0f0f1a] p-3.5">
+      <div className="flex items-center gap-2">
+        <ChannelIcon channel={channel} />
+        <span className="text-sm font-semibold text-[#f1f5f9]">
+          {meta.label}
+        </span>
+      </div>
+      <div className="mt-3 space-y-1.5">
+        <Stat label="Posts published" value={perf?.posts ?? 0} />
+        <Stat
+          label="Avg impressions"
+          value={(perf?.avgImpressions ?? 0).toLocaleString()}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-[#64748b]">Avg engagement rate</span>
+          <span
+            className="text-sm font-semibold tabular-nums text-[#f1f5f9]"
+            title={
+              clamped ? 'Data may include duplicate events' : undefined
+            }
+          >
+            {shownRate.toFixed(1)}%{clamped ? '*' : ''}
+          </span>
+        </div>
       </div>
     </div>
   )
 }
 
-// ── Section 2: stacked bar chart ────────────────────────────────────
+// ── Section 3: stacked bar chart ────────────────────────────────────
 
 interface DayRow {
   label: string
@@ -171,19 +296,25 @@ interface DayRow {
 function PerformanceChart({
   data,
   loading,
+  rangeDays,
+  channels,
 }: {
-  data: { day: string; channel: string; count: number }[]
+  data: PublishedByDay[]
   loading: boolean
+  rangeDays: number
+  channels: MainChannel[]
 }) {
   if (loading) {
     return <div className="h-64 animate-pulse rounded bg-white/[0.03]" />
   }
 
-  // Build the last 14 calendar days, then fold the per-day/per-channel counts in.
+  // Build the last `rangeDays` calendar days, then fold the per-day/per-channel
+  // counts in. The window is sliced entirely client-side from already-fetched
+  // rows — the backend always returns the full series.
   const days: DayRow[] = []
   const index = new Map<string, DayRow>()
   const today = new Date()
-  for (let i = 13; i >= 0; i--) {
+  for (let i = rangeDays - 1; i >= 0; i--) {
     const d = new Date(today)
     d.setDate(today.getDate() - i)
     const key = d.toISOString().slice(0, 10)
@@ -206,13 +337,18 @@ function PerformanceChart({
     }
   }
 
-  const total = data.reduce((sum, r) => sum + r.count, 0)
+  // Total only counts the visible window + active channels, so the empty state
+  // tracks the current filters rather than the full unfiltered series.
+  const total = days.reduce(
+    (sum, row) => sum + channels.reduce((s, ch) => s + row[ch], 0),
+    0,
+  )
   if (total === 0) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2 text-center">
-        <BarChart3 className="h-7 w-7 text-gray-600" />
-        <div className="text-sm text-gray-500">
-          No posts published in the last 14 days yet.
+        <BarChart3 className="h-7 w-7 text-[#64748b]" />
+        <div className="text-sm text-[#94a3b8]">
+          No posts published in the last {rangeDays} days yet.
         </div>
       </div>
     )
@@ -224,13 +360,13 @@ function PerformanceChart({
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
         <XAxis
           dataKey="label"
-          tick={{ fill: '#6b7280', fontSize: 11 }}
+          tick={{ fill: '#64748b', fontSize: 11 }}
           tickLine={false}
           axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
         />
         <YAxis
           allowDecimals={false}
-          tick={{ fill: '#6b7280', fontSize: 11 }}
+          tick={{ fill: '#64748b', fontSize: 11 }}
           tickLine={false}
           axisLine={false}
         />
@@ -238,24 +374,24 @@ function PerformanceChart({
           cursor={{ fill: 'rgba(255,255,255,0.04)' }}
           contentStyle={{
             background: '#0d0d12',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid #1e1e2e',
             borderRadius: 8,
             fontSize: 12,
           }}
-          labelStyle={{ color: '#e5e7eb' }}
+          labelStyle={{ color: '#f1f5f9' }}
         />
         <Legend
           iconType="circle"
           wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
         />
-        {MAIN_CHANNELS.map((ch) => (
+        {MAIN_CHANNELS.filter((ch) => channels.includes(ch)).map((ch) => (
           <Bar
             key={ch}
             dataKey={ch}
             stackId="posts"
             name={channelMeta(ch).label}
             fill={CHART_FILL[ch]}
-            radius={ch === 'email' ? [3, 3, 0, 0] : undefined}
+            radius={ch === channels[channels.length - 1] ? [3, 3, 0, 0] : undefined}
           />
         ))}
       </BarChart>
@@ -263,7 +399,10 @@ function PerformanceChart({
   )
 }
 
-// ── Section 3: top content table ────────────────────────────────────
+// ── Section 4: top content table ────────────────────────────────────
+
+const SOCIAL_NOTE =
+  'Click tracking requires SendGrid domain authentication for apire.io'
 
 function TopContentTable({
   items,
@@ -279,22 +418,30 @@ function TopContentTable({
   }
   if (items.length === 0) {
     return (
-      <div className="py-10 text-center text-sm text-gray-500">
+      <div className="py-10 text-center text-sm text-[#94a3b8]">
         No published content yet.
       </div>
     )
   }
 
+  // Buffer/LinkedIn never return click metrics, so the social Clicks column is
+  // structurally all-zero. When that's the case we drop the column and surface
+  // a single explanatory note instead of a column of meaningless zeros. (GSC
+  // keyword clicks live in a different table and stay untouched.)
+  const allClicksZero = items.every((it) => it.clicks === 0)
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-white/[0.06] text-[11px] uppercase tracking-wide text-gray-500">
+          <tr className="border-b border-[#1e1e2e] text-[11px] uppercase tracking-wide text-[#64748b]">
             <th className="py-2 pr-3 font-medium">Content</th>
             <th className="px-3 py-2 font-medium">Channel</th>
             <th className="px-3 py-2 font-medium">Published</th>
             <th className="px-3 py-2 text-right font-medium">Impr.</th>
-            <th className="px-3 py-2 text-right font-medium">Clicks</th>
+            {!allClicksZero && (
+              <th className="px-3 py-2 text-right font-medium">Clicks</th>
+            )}
             <th className="px-3 py-2 text-right font-medium">Engmt.</th>
             <th className="py-2 pl-3 text-right font-medium">
               {hasMetrics ? 'Score' : 'Guardian'}
@@ -305,27 +452,29 @@ function TopContentTable({
           {items.map((it) => (
             <tr
               key={it.id}
-              className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]"
+              className="border-b border-[#1e1e2e] last:border-0 hover:bg-white/[0.02]"
             >
-              <td className="max-w-[280px] truncate py-2.5 pr-3 text-gray-200">
-                {it.preview || <span className="text-gray-600">—</span>}
+              <td className="max-w-[280px] truncate py-2.5 pr-3 text-[#f1f5f9]">
+                {it.preview || <span className="text-[#64748b]">—</span>}
               </td>
               <td className="px-3 py-2.5">
-                <span className="inline-flex items-center gap-1.5 text-gray-300">
+                <span className="inline-flex items-center gap-1.5 text-[#94a3b8]">
                   <ChannelIcon channel={it.channel} />
                   {channelMeta(it.channel).label}
                 </span>
               </td>
-              <td className="px-3 py-2.5 text-gray-400">
+              <td className="px-3 py-2.5 text-[#94a3b8]">
                 {fmtDate(it.publishedAt)}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-gray-300">
+              <td className="px-3 py-2.5 text-right tabular-nums text-[#94a3b8]">
                 {it.impressions.toLocaleString()}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-gray-300">
-                {it.clicks.toLocaleString()}
-              </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-gray-300">
+              {!allClicksZero && (
+                <td className="px-3 py-2.5 text-right tabular-nums text-[#94a3b8]">
+                  {it.clicks.toLocaleString()}
+                </td>
+              )}
+              <td className="px-3 py-2.5 text-right tabular-nums text-[#94a3b8]">
                 {it.engagement.toLocaleString()}
               </td>
               <td className="py-2.5 pl-3 text-right">
@@ -335,6 +484,9 @@ function TopContentTable({
           ))}
         </tbody>
       </table>
+      {allClicksZero && (
+        <p className="mt-3 text-xs italic text-[#64748b]">{SOCIAL_NOTE}</p>
+      )}
     </div>
   )
 }
@@ -356,15 +508,15 @@ function ScoreCell({
   }
   if (item.guardianScore != null) {
     return (
-      <span className="tabular-nums text-gray-300">
+      <span className="tabular-nums text-[#94a3b8]">
         {item.guardianScore.toFixed(2)}
       </span>
     )
   }
-  return <span className="text-gray-600">—</span>
+  return <span className="text-[#64748b]">—</span>
 }
 
-// ── Section 4: keyword table ────────────────────────────────────────
+// ── Section 5: keyword table ────────────────────────────────────────
 
 function KeywordsTable({
   keywords,
@@ -373,9 +525,26 @@ function KeywordsTable({
 }) {
   if (keywords.length === 0) {
     return (
-      <div className="py-10 text-center text-sm text-gray-500">
-        Connect Google Search Console in Settings → Connected Platforms to see
-        keyword data.
+      <div className="rounded-lg border border-[#1e1e2e] bg-[#0f0f1a] p-6 text-center">
+        <div
+          className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-violet-500/15"
+          aria-hidden
+        >
+          <Search className="h-5 w-5 text-violet-400" />
+        </div>
+        <h3 className="text-sm font-semibold text-[#f1f5f9]">
+          Connect Google Search Console
+        </h3>
+        <p className="mx-auto mt-1.5 max-w-md text-xs text-[#94a3b8]">
+          See which search queries bring people to apire.io and track ranking
+          positions
+        </p>
+        <Link
+          to="/settings?tab=platforms"
+          className="mt-4 inline-flex items-center gap-1 rounded-lg bg-[#7c3aed] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#8b5cf6]"
+        >
+          Connect Google →
+        </Link>
       </div>
     )
   }
@@ -384,7 +553,7 @@ function KeywordsTable({
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-white/[0.06] text-[11px] uppercase tracking-wide text-gray-500">
+          <tr className="border-b border-[#1e1e2e] text-[11px] uppercase tracking-wide text-[#64748b]">
             <th className="py-2 pr-3 font-medium">Query</th>
             <th className="px-3 py-2 font-medium">Page</th>
             <th className="px-3 py-2 text-right font-medium">Impr.</th>
@@ -397,19 +566,19 @@ function KeywordsTable({
           {keywords.map((k, i) => (
             <tr
               key={`${k.query}-${i}`}
-              className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]"
+              className="border-b border-[#1e1e2e] last:border-0 hover:bg-white/[0.02]"
             >
-              <td className="py-2.5 pr-3 text-gray-200">{k.query}</td>
-              <td className="max-w-[220px] truncate px-3 py-2.5 text-gray-500">
+              <td className="py-2.5 pr-3 text-[#f1f5f9]">{k.query}</td>
+              <td className="max-w-[220px] truncate px-3 py-2.5 text-[#64748b]">
                 {prettyPath(k.page)}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-gray-300">
+              <td className="px-3 py-2.5 text-right tabular-nums text-[#94a3b8]">
                 {k.impressions.toLocaleString()}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-gray-300">
+              <td className="px-3 py-2.5 text-right tabular-nums text-[#94a3b8]">
                 {k.clicks.toLocaleString()}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-gray-300">
+              <td className="px-3 py-2.5 text-right tabular-nums text-[#94a3b8]">
                 {k.position.toFixed(1)}
               </td>
               <td className="py-2.5 pl-3 text-right">
@@ -428,8 +597,8 @@ function KeywordsTable({
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs text-gray-500">{label}</span>
-      <span className="text-sm font-semibold tabular-nums text-gray-200">
+      <span className="text-xs text-[#64748b]">{label}</span>
+      <span className="text-sm font-semibold tabular-nums text-[#f1f5f9]">
         {value}
       </span>
     </div>

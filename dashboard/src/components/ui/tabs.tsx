@@ -39,8 +39,9 @@ export function TabsList({
 }) {
   return (
     <div
+      role="tablist"
       className={cn(
-        'inline-flex items-center gap-1 rounded-xl border border-white/[0.05] bg-white/[0.03] p-1',
+        'inline-flex items-center gap-1 rounded-xl border border-[#1e1e2e] bg-white/[0.03] p-1',
         className,
       )}
     >
@@ -62,12 +63,14 @@ export function TabsTrigger({
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
       onClick={() => ctx.setValue(value)}
       className={cn(
-        'rounded-lg px-3.5 py-1.5 text-sm transition-all duration-150',
+        'rounded-lg px-3.5 py-1.5 text-sm transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40',
         active
-          ? 'bg-cyan-500/15 text-cyan-300 shadow-sm shadow-cyan-500/10'
-          : 'text-gray-500 hover:bg-white/[0.04] hover:text-gray-300',
+          ? 'bg-violet-500/15 text-violet-300 shadow-sm shadow-violet-500/10'
+          : 'text-[#94a3b8] hover:bg-white/[0.04] hover:text-[#f1f5f9]',
       )}
     >
       {children}
@@ -87,5 +90,9 @@ export function TabsContent({
   const ctx = useContext(TabsContext)
   if (!ctx) throw new Error('TabsContent must be used within Tabs')
   if (ctx.value !== value) return null
-  return <div className={cn('animate-fade-in', className)}>{children}</div>
+  return (
+    <div role="tabpanel" tabIndex={0} className={cn('animate-fade-in focus:outline-none', className)}>
+      {children}
+    </div>
+  )
 }

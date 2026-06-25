@@ -24,15 +24,15 @@ function Logo() {
   return (
     <div className="flex items-center gap-3 px-3 py-5">
       <div className="relative h-9 w-9">
-        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 opacity-80" />
-        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 opacity-30 blur-lg" />
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 opacity-90" />
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 opacity-40 blur-lg" />
         <div className="relative flex h-full w-full items-center justify-center text-sm font-extrabold text-white">
           hm
         </div>
       </div>
       <div className="flex flex-col leading-tight">
         <span className="text-base font-bold text-white">hailmery</span>
-        <span className="text-[10px] uppercase tracking-wider text-gray-500">
+        <span className="text-[10px] uppercase tracking-wider text-[#64748b]">
           Command Center
         </span>
       </div>
@@ -47,27 +47,27 @@ function TenantSwitcher() {
       align="start"
       className="bottom-full left-0 mb-2 mt-0 w-56"
       trigger={
-        <button className="flex w-full items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.06]">
+        <button className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#1e1e2e] bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.06]">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-xs font-bold text-white">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-xs font-bold text-white">
               {current?.name?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div className="overflow-hidden">
               <div className="truncate text-sm font-medium text-gray-200">
                 {current?.name ?? 'Select tenant'}
               </div>
-              <div className="truncate text-[11px] text-gray-500">
+              <div className="truncate text-[11px] text-[#64748b]">
                 {current?.slug ?? '—'}
               </div>
             </div>
           </div>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 text-gray-500" />
+          <ChevronsUpDown className="h-4 w-4 shrink-0 text-[#64748b]" />
         </button>
       }
     >
       {({ close }) => (
         <div className="space-y-0.5">
-          <div className="px-2 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-gray-600">
+          <div className="px-2 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-[#64748b]">
             Switch tenant
           </div>
           {tenants.map((t) => (
@@ -86,7 +86,7 @@ function TenantSwitcher() {
                 {t.name}
               </span>
               {current?.id === t.id && (
-                <Check className="h-4 w-4 text-cyan-400" />
+                <Check className="h-4 w-4 text-violet-400" />
               )}
             </button>
           ))}
@@ -96,21 +96,41 @@ function TenantSwitcher() {
   )
 }
 
-export function Sidebar() {
+/**
+ * App sidebar. On desktop (≥768px) it's a fixed-in-flow 256px rail. On mobile it
+ * becomes an off-canvas drawer driven by `open`/`onClose` from AppLayout, sliding
+ * in over a dimmed overlay; tapping a nav item closes it.
+ */
+export function Sidebar({
+  open = false,
+  onClose,
+}: {
+  open?: boolean
+  onClose?: () => void
+}) {
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0d12]">
+    <aside
+      id="app-sidebar"
+      aria-label="Main navigation"
+      className={cn(
+        'fixed inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col border-r border-[#1e1e2e] bg-[#0a0a0f] transition-transform duration-200 ease-out',
+        'md:sticky md:top-0 md:z-auto md:translate-x-0',
+        open ? 'translate-x-0' : '-translate-x-full',
+      )}
+    >
       <Logo />
       <nav className="flex-1 space-y-1 px-3 py-2">
         {NAV.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
+            onClick={onClose}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150',
                 isActive
-                  ? 'bg-cyan-500/15 text-cyan-300 shadow-sm shadow-cyan-500/10'
-                  : 'text-gray-400 hover:bg-white/[0.05] hover:text-gray-200',
+                  ? 'bg-violet-500/15 text-violet-300 shadow-sm shadow-violet-500/10'
+                  : 'text-[#94a3b8] hover:bg-white/[0.05] hover:text-[#f1f5f9]',
               )
             }
           >
@@ -119,7 +139,7 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-white/[0.06] p-3">
+      <div className="border-t border-[#1e1e2e] p-3">
         <TenantSwitcher />
       </div>
     </aside>

@@ -48,7 +48,7 @@ export function Toast({
       <button
         onClick={onClose}
         aria-label="Dismiss"
-        className="rounded p-0.5 text-gray-500 transition-colors hover:text-gray-200"
+        className="rounded p-0.5 text-[#94a3b8] transition-colors hover:text-[#f1f5f9]"
       >
         <X className="h-3.5 w-3.5" />
       </button>

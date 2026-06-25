@@ -134,7 +134,7 @@ const FALLBACK: ChannelMeta = {
   key: 'unknown',
   label: 'Channel',
   icon: Globe,
-  iconClass: 'text-gray-400',
+  iconClass: 'text-[#94a3b8]',
   dotStyle: '#6b7280',
   charLimit: 0,
   kind: 'social',

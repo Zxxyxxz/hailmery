@@ -7,10 +7,34 @@
    ────────────────────────────────────────────────────────────────── */
 
 @theme {
-  --color-canvas: #0a0b0f;
-  --color-surface: #12131a;
-  --color-surface-2: #14151c;
+  --color-canvas: #000000;
+  --color-surface: #0a0a0f;
+  --color-surface-2: #0f0f1a;
+  --color-purple: #7c3aed;
+  --color-purple-bright: #8b5cf6;
+  --color-cyan-accent: #06b6d4;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Brand design tokens (APIRE: pure-black canvas, purple-dominant).
+   Components mostly reference these as arbitrary hex (e.g. bg-[#7c3aed])
+   so the values live here as the single source of truth for the palette.
+   ────────────────────────────────────────────────────────────────── */
+:root {
+  --bg-base: #000000;
+  --bg-surface: #0a0a0f;
+  --bg-card: #0f0f1a;
+  --border-color: #1e1e2e;
+  --purple-primary: #7c3aed;
+  --purple-bright: #8b5cf6;
+  --cyan-accent: #06b6d4;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
 }
 
 @layer base {
@@ -19,33 +43,35 @@
   }
   body {
     margin: 0;
-    background-color: #0a0b0f;
-    color: #f3f4f6;
+    background-color: #000000;
+    color: #f1f5f9;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  /* Default border token — visible card edges so panels stop blending into
+     the pure-black canvas. Explicit border-* utilities still override. */
   * {
-    border-color: rgba(255, 255, 255, 0.06);
+    border-color: #1e1e2e;
   }
 }
 
 @layer components {
   .glass {
-    background-color: rgb(18 19 26 / 0.8);
+    background-color: rgb(15 15 26 / 0.85);
     backdrop-filter: blur(24px);
-    border: 1px solid rgb(255 255 255 / 0.06);
+    border: 1px solid #1e1e2e;
     border-radius: 1rem;
-    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.2);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.35);
   }
   .glass-sm {
-    background-color: rgb(18 19 26 / 0.6);
+    background-color: rgb(15 15 26 / 0.7);
     backdrop-filter: blur(16px);
-    border: 1px solid rgb(255 255 255 / 0.05);
+    border: 1px solid #1e1e2e;
     border-radius: 0.75rem;
   }
   .gradient-text {
-    background-image: linear-gradient(to right, #22d3ee, #60a5fa, #a78bfa);
+    background-image: linear-gradient(to right, #8b5cf6, #7c3aed, #06b6d4);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -54,8 +80,19 @@
     display: block;
     font-size: 0.875rem;
     font-weight: 500;
-    color: #9ca3af;
+    color: #94a3b8;
     margin-bottom: 0.375rem;
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbars on horizontally-scrollable strips (e.g. mobile tab bars)
+     while keeping them scrollable. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 

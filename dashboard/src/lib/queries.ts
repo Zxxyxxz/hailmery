@@ -78,6 +78,9 @@ export function usePatchDraft() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drafts', currentId] })
       qc.invalidateQueries({ queryKey: ['campaigns', currentId] })
+      // A status change (approve/dismiss/schedule) shifts the header counts —
+      // keep the queue-status stats bar in sync so "Approved" doesn't go stale.
+      qc.invalidateQueries({ queryKey: ['queue-status', currentId] })
     },
   })
 }

@@ -44,6 +44,7 @@ import {
 import type {
   BrandVoice,
   BufferImportResult,
+  DocumentRow,
   DomainAuthRecord,
   PlatformConnection,
 } from '@/lib/types'
@@ -81,30 +82,32 @@ export default function SettingsPage() {
   return (
     <div className="animate-fade-in space-y-6">
       <header>
-        <h1 className="text-2xl font-bold text-gray-100">Settings</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-semibold tracking-tight text-[#f1f5f9]">Settings</h1>
+        <p className="mt-1 text-sm text-[#94a3b8]">
           Brand voice, connected platforms, corpus, and cadence
         </p>
       </header>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="brand">
-            <span className="flex items-center gap-1.5"><Mic className="h-4 w-4" /> Brand Voice</span>
-          </TabsTrigger>
-          <TabsTrigger value="platforms">
-            <span className="flex items-center gap-1.5"><Plug className="h-4 w-4" /> Platforms</span>
-          </TabsTrigger>
-          <TabsTrigger value="corpus">
-            <span className="flex items-center gap-1.5"><FileText className="h-4 w-4" /> Corpus</span>
-          </TabsTrigger>
-          <TabsTrigger value="history">
-            <span className="flex items-center gap-1.5"><DownloadCloud className="h-4 w-4" /> Import History</span>
-          </TabsTrigger>
-          <TabsTrigger value="schedule">
-            <span className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4" /> Schedule</span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto no-scrollbar">
+          <TabsList className="flex-nowrap whitespace-nowrap">
+            <TabsTrigger value="brand">
+              <span className="flex items-center gap-1.5"><Mic className="h-4 w-4" /> Brand Voice</span>
+            </TabsTrigger>
+            <TabsTrigger value="platforms">
+              <span className="flex items-center gap-1.5"><Plug className="h-4 w-4" /> Platforms</span>
+            </TabsTrigger>
+            <TabsTrigger value="corpus">
+              <span className="flex items-center gap-1.5"><FileText className="h-4 w-4" /> Corpus</span>
+            </TabsTrigger>
+            <TabsTrigger value="history">
+              <span className="flex items-center gap-1.5"><DownloadCloud className="h-4 w-4" /> Import History</span>
+            </TabsTrigger>
+            <TabsTrigger value="schedule">
+              <span className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4" /> Schedule</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <div className="mt-6">
           <TabsContent value="brand"><BrandVoiceTab /></TabsContent>
@@ -129,23 +132,51 @@ function BrandVoiceTab() {
   const save = usePatchSiteConfig()
 
   const [tone, setTone] = useState('')
+  const [audience, setAudience] = useState('')
   const [preferred, setPreferred] = useState<string[]>([])
   const [avoid, setAvoid] = useState<string[]>([])
   const [good, setGood] = useState('')
   const [bad, setBad] = useState('')
   const [saved, setSaved] = useState(false)
+  // Baseline of the hydrated server values, used for dirty detection + discard.
+  const [baseline, setBaseline] = useState<{
+    tone: string
+    audience: string
+    preferred: string[]
+    avoid: string[]
+    good: string
+    bad: string
+  } | null>(null)
 
   useEffect(() => {
     if (!data) return
     const bv = data.brandVoice
-    setTone(String(bv.tone ?? ''))
-    setPreferred((bv.preferredTerms as string[]) ?? (bv.always as string[]) ?? [])
-    setAvoid((bv.avoidTerms as string[]) ?? (bv.avoid as string[]) ?? [])
-    setGood(((bv.goodExamples as string[]) ?? []).join('\n'))
-    setBad(((bv.badExamples as string[]) ?? []).join('\n'))
+    const next = {
+      tone: String(bv.tone ?? ''),
+      audience: String(bv.audience ?? ''),
+      preferred: (bv.preferredTerms as string[]) ?? (bv.always as string[]) ?? [],
+      avoid: (bv.avoidTerms as string[]) ?? (bv.avoid as string[]) ?? [],
+      good: ((bv.goodExamples as string[]) ?? []).join('\n'),
+      bad: ((bv.badExamples as string[]) ?? []).join('\n'),
+    }
+    setTone(next.tone)
+    setAudience(next.audience)
+    setPreferred(next.preferred)
+    setAvoid(next.avoid)
+    setGood(next.good)
+    setBad(next.bad)
+    setBaseline(next)
   }, [data])
 
   if (isLoading || !data) return <Skeleton className="h-96 rounded-2xl" />
+
+  const isDirty =
+    !!baseline &&
+    (tone !== baseline.tone ||
+      JSON.stringify(preferred) !== JSON.stringify(baseline.preferred) ||
+      JSON.stringify(avoid) !== JSON.stringify(baseline.avoid) ||
+      good !== baseline.good ||
+      bad !== baseline.bad)
 
   function onSave() {
     if (!siteId) return
@@ -159,50 +190,145 @@ function BrandVoiceTab() {
     }
     save.mutate(
       { siteId, brandVoice: next },
-      { onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 2500) } },
+      {
+        onSuccess: () => {
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2500)
+          // Re-baseline so the sticky bar dismisses after a successful save.
+          setBaseline({
+            tone,
+            audience,
+            preferred,
+            avoid,
+            good,
+            bad,
+          })
+        },
+      },
     )
+  }
+
+  function onDiscard() {
+    if (!baseline) return
+    setTone(baseline.tone)
+    setAudience(baseline.audience)
+    setPreferred(baseline.preferred)
+    setAvoid(baseline.avoid)
+    setGood(baseline.good)
+    setBad(baseline.bad)
   }
 
   const toneOptions = TONES.includes(tone) || !tone ? TONES : [tone, ...TONES]
 
+  // Client-side voice preview — derive a sample line from local state only.
+  const previewSentence = (() => {
+    if (!tone && !audience && preferred.length === 0) return null
+    const term = preferred[0]
+    const aud = audience ? ` for ${audience}` : ''
+    const toneAdj = tone ? `${tone} ` : ''
+    const lead = term
+      ? `Here's how ${term} changes the game${aud}.`
+      : `Here's how we move the needle${aud}.`
+    return `In a ${toneAdj}voice${aud ? '' : ' for our audience'}: "${lead}"`
+  })()
+
   return (
-    <Card className="space-y-5 p-6">
-      <div>
-        <Label>Tone</Label>
-        <Select value={tone} onChange={(e) => setTone(e.target.value)}>
-          {toneOptions.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </Select>
+    <div className="space-y-0">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
+        <Card className="space-y-5 p-6 md:col-span-3">
+          <div>
+            <Label>Tone</Label>
+            <Select value={tone} onChange={(e) => setTone(e.target.value)}>
+              {toneOptions.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Preferred terms</Label>
+            <TagInput value={preferred} onChange={setPreferred} placeholder="Add a term and press Enter" />
+          </div>
+          <div>
+            <Label>Terms to avoid</Label>
+            <TagInput value={avoid} onChange={setAvoid} placeholder="Add a term and press Enter" />
+          </div>
+          <div>
+            <Label>Example sentences that sound right (one per line)</Label>
+            <Textarea rows={4} value={good} onChange={(e) => setGood(e.target.value)} />
+          </div>
+          <div>
+            <Label>Example sentences that sound wrong (one per line)</Label>
+            <Textarea rows={4} value={bad} onChange={(e) => setBad(e.target.value)} />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={onSave} disabled={save.isPending || !isDirty}>
+              {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save brand voice
+            </Button>
+            {saved && (
+              <span className="flex items-center gap-1 text-sm text-emerald-400">
+                <CheckCircle2 className="h-4 w-4" /> Saved
+              </span>
+            )}
+          </div>
+        </Card>
+
+        <div className="md:col-span-2">
+          <div className="sticky top-4 rounded-lg border border-[#1e1e2e] bg-[#0f0f1a] p-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[#8b5cf6]" />
+              <h3 className="text-sm font-semibold text-[#f1f5f9]">Voice preview</h3>
+            </div>
+            {previewSentence ? (
+              <>
+                <p className="mt-3 text-sm italic text-[#94a3b8]">{previewSentence}</p>
+                {(tone || preferred.length > 0 || avoid.length > 0) && (
+                  <div className="mt-4 space-y-2 text-xs">
+                    {tone && (
+                      <div className="text-[#64748b]">
+                        Tone: <span className="text-[#94a3b8]">{tone}</span>
+                      </div>
+                    )}
+                    {preferred.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[#64748b]">Lean into:</span>
+                        {preferred.slice(0, 6).map((t) => (
+                          <Badge key={t} variant="purple">{t}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {avoid.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[#64748b]">Avoid:</span>
+                        {avoid.slice(0, 6).map((t) => (
+                          <Badge key={t} variant="red">{t}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-[#64748b]">
+                Save your brand voice settings to see a preview here.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
-      <div>
-        <Label>Preferred terms</Label>
-        <TagInput value={preferred} onChange={setPreferred} placeholder="Add a term and press Enter" />
-      </div>
-      <div>
-        <Label>Terms to avoid</Label>
-        <TagInput value={avoid} onChange={setAvoid} placeholder="Add a term and press Enter" />
-      </div>
-      <div>
-        <Label>Example sentences that sound right (one per line)</Label>
-        <Textarea rows={4} value={good} onChange={(e) => setGood(e.target.value)} />
-      </div>
-      <div>
-        <Label>Example sentences that sound wrong (one per line)</Label>
-        <Textarea rows={4} value={bad} onChange={(e) => setBad(e.target.value)} />
-      </div>
-      <div className="flex items-center gap-3">
-        <Button onClick={onSave} disabled={save.isPending}>
-          {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Save brand voice
-        </Button>
-        {saved && (
-          <span className="flex items-center gap-1 text-sm text-emerald-400">
-            <CheckCircle2 className="h-4 w-4" /> Saved
-          </span>
-        )}
-      </div>
-    </Card>
+
+      {isDirty && (
+        <div className="sticky bottom-0 z-20 -mx-1 mt-6 flex justify-end gap-3 border-t border-[#1e1e2e] bg-[#0a0a0f]/95 px-1 py-3 backdrop-blur">
+          <Button variant="ghost" onClick={onDiscard} disabled={save.isPending}>
+            Discard
+          </Button>
+          <Button onClick={onSave} disabled={save.isPending}>
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -303,31 +429,90 @@ function PlatformsTab() {
   const connectDef = PLATFORMS.find((p) => p.id === connectId) ?? null
   const sendgrid = byId.get('sendgrid')
 
-  return (
-    <div className="space-y-4">
-      <Card className="divide-y divide-white/[0.05] p-2">
-        {PLATFORMS.map((p) => (
-          <PlatformRow
-            key={p.id}
-            def={p}
-            status={byId.get(p.id)}
-            disconnecting={disconnect.isPending && disconnect.variables === p.id}
-            connecting={oauthBusy === p.id}
-            onConnect={() =>
-              p.connectionType === 'oauth' ? connectOAuth(p) : setConnectId(p.id)
-            }
-            onAuthDomain={() => setDomainOpen(true)}
-            onDisconnect={() =>
-              disconnect.mutate(p.id, {
-                onSuccess: () => setToast({ message: `${p.name} disconnected` }),
-                onError: (e) => setToast({ message: toApiError(e).error, variant: 'error' }),
-              })
-            }
-          />
-        ))}
-      </Card>
+  // SendGrid is connected but its sending domain is not authenticated → promote
+  // a full-width "Action needed" alert to the top of the tab.
+  const domainActionNeeded = !!sendgrid?.connected && sendgrid?.domainVerified !== true
+  const sendgridDomain = sendgrid?.domain ?? 'apire.io'
 
-      <p className="px-1 text-xs text-gray-600">
+  // Group the catalog by status (Action needed cards aren't a platform group —
+  // that alert lives separately above the groups).
+  const connectedDefs = PLATFORMS.filter((p) => byId.get(p.id)?.connected)
+  const availableDefs = PLATFORMS.filter((p) => p.available && !byId.get(p.id)?.connected)
+  const comingSoonDefs = PLATFORMS.filter((p) => !p.available && !byId.get(p.id)?.connected)
+
+  const renderCard = (p: PlatformDef) => (
+    <IntegrationCard
+      key={p.id}
+      def={p}
+      status={byId.get(p.id)}
+      disconnecting={disconnect.isPending && disconnect.variables === p.id}
+      connecting={oauthBusy === p.id}
+      onConnect={() =>
+        p.connectionType === 'oauth' ? connectOAuth(p) : setConnectId(p.id)
+      }
+      onAuthDomain={() => setDomainOpen(true)}
+      onDisconnect={() =>
+        disconnect.mutate(p.id, {
+          onSuccess: () => setToast({ message: `${p.name} disconnected` }),
+          onError: (e) => setToast({ message: toApiError(e).error, variant: 'error' }),
+        })
+      }
+    />
+  )
+
+  return (
+    <div className="space-y-8">
+      {/* Action needed — promoted email domain-auth warning */}
+      {domainActionNeeded && (
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Action needed</h3>
+          <div className="rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/5 p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[#f59e0b]" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-[#f1f5f9]">
+                  Action needed: Authenticate {sendgridDomain} for email
+                </div>
+                <p className="mt-1 text-sm text-[#94a3b8]">
+                  Emails currently send from marketing@leadorch.io. Add 3 DNS records to send from
+                  marketing@{sendgridDomain}.
+                </p>
+                <Button variant="secondary" size="sm" className="mt-3" onClick={() => setDomainOpen(true)}>
+                  <ShieldCheck className="h-3.5 w-3.5" /> Authenticate domain →
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connected */}
+      {connectedDefs.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Connected</h3>
+          <div className="space-y-3">{connectedDefs.map(renderCard)}</div>
+        </div>
+      )}
+
+      {/* Available to connect */}
+      {availableDefs.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">
+            Available to connect
+          </h3>
+          <div className="space-y-3">{availableDefs.map(renderCard)}</div>
+        </div>
+      )}
+
+      {/* Coming soon */}
+      {comingSoonDefs.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748b]">Coming soon</h3>
+          <div className="space-y-3">{comingSoonDefs.map(renderCard)}</div>
+        </div>
+      )}
+
+      <p className="px-1 text-xs text-[#64748b]">
         Keys are validated with a live call, then encrypted before storage — hailmery only ever keeps the encrypted value.
       </p>
 
@@ -374,19 +559,19 @@ function OAuthGuidance({
   scopes?: string[]
 }) {
   return (
-    <div className="mt-3 space-y-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+    <div className="mt-3 space-y-3 rounded-lg border border-[#1e1e2e] bg-white/[0.02] px-3 py-2.5">
       {!connected && (
         <>
           <div>
-            <div className="text-[11px] font-medium text-gray-300">{help.title}</div>
-            <p className="mt-0.5 text-xs text-gray-500">{help.description}</p>
+            <div className="text-[11px] font-medium text-[#f1f5f9]">{help.title}</div>
+            <p className="mt-0.5 text-xs text-[#94a3b8]">{help.description}</p>
           </div>
           {help.important && (
-            <div className="rounded-md border border-blue-500/25 bg-blue-500/[0.06] px-2.5 py-2 text-xs text-blue-200">
+            <div className="rounded-md border border-violet-500/25 bg-violet-500/[0.08] px-2.5 py-2 text-xs text-violet-200">
               {help.important}
             </div>
           )}
-          <ol className="list-decimal space-y-0.5 pl-4 text-xs text-gray-500">
+          <ol className="list-decimal space-y-0.5 pl-4 text-xs text-[#94a3b8]">
             {help.steps.map((s, i) => (
               <li key={i}>{s}</li>
             ))}
@@ -395,7 +580,7 @@ function OAuthGuidance({
       )}
       {help.scopes && help.scopes.length > 0 && (
         <div>
-          <div className="mb-1 text-[11px] font-medium text-gray-500">
+          <div className="mb-1 text-[11px] font-medium text-[#94a3b8]">
             {connected ? 'Active services' : 'This connects'}
           </div>
           <div className="space-y-1">
@@ -405,17 +590,17 @@ function OAuthGuidance({
                 <div
                   key={svc.name}
                   className={`flex items-start gap-1.5 text-xs ${
-                    active ? 'text-emerald-300' : 'text-gray-500'
+                    active ? 'text-emerald-300' : 'text-[#94a3b8]'
                   }`}
                 >
                   {active ? (
                     <Check className="mt-0.5 h-3 w-3 shrink-0" />
                   ) : (
-                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-600" />
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#64748b]" />
                   )}
                   <span>
-                    <span className="text-gray-300">{svc.name}</span>
-                    <span className="text-gray-600"> — {svc.description}</span>
+                    <span className="text-[#f1f5f9]">{svc.name}</span>
+                    <span className="text-[#64748b]"> — {svc.description}</span>
                   </span>
                 </div>
               )
@@ -423,7 +608,7 @@ function OAuthGuidance({
           </div>
         </div>
       )}
-      {!connected && help.gscSetupNote && <p className="text-xs text-gray-600">{help.gscSetupNote}</p>}
+      {!connected && help.gscSetupNote && <p className="text-xs text-[#64748b]">{help.gscSetupNote}</p>}
       {!connected && help.testingNote && (
         <p className="text-xs text-amber-300/80">{help.testingNote}</p>
       )}
@@ -431,7 +616,7 @@ function OAuthGuidance({
   )
 }
 
-function PlatformRow({
+function IntegrationCard({
   def,
   status,
   disconnecting,
@@ -452,39 +637,66 @@ function PlatformRow({
   const connected = !!status?.connected
   const isSendgrid = def.id === 'sendgrid'
   const domainOk = status?.domainVerified === true
+  // SendGrid connected but domain unverified → this card itself needs attention.
+  const actionNeeded = connected && isSendgrid && !domainOk
+  const comingSoon = !def.available && !connected
+
+  const cardBorder = actionNeeded
+    ? 'border-[#f59e0b]/30 bg-[#f59e0b]/5'
+    : comingSoon
+      ? 'border-[#1e1e2e]/50 bg-[#0f0f1a] opacity-60'
+      : 'border-[#1e1e2e] bg-[#0f0f1a]'
 
   return (
-    <div className="px-4 py-3.5">
+    <div className={`rounded-lg border p-4 ${cardBorder}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span
-            className={`h-2.5 w-2.5 shrink-0 rounded-full ${connected ? 'bg-emerald-400' : 'bg-gray-600'}`}
-          />
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#1e1e2e] bg-white/[0.03] ${
+              connected ? 'text-[#8b5cf6]' : 'text-[#64748b]'
+            }`}
+          >
+            <Plug className="h-4 w-4" />
+          </span>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-200">{def.name}</span>
-              {!def.available && !connected && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-[#f1f5f9]">{def.name}</span>
+              {/* Status chip */}
+              {connected ? (
+                actionNeeded ? (
+                  <Badge variant="amber" className="gap-1">
+                    <AlertTriangle className="h-3 w-3" /> Action needed
+                  </Badge>
+                ) : (
+                  <Badge variant="green" className="gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Connected
+                  </Badge>
+                )
+              ) : def.available ? (
+                <Badge variant="gray">Available</Badge>
+              ) : (
                 <Badge variant="gray" className="gap-1">
                   <Lock className="h-3 w-3" /> Coming soon
                 </Badge>
               )}
             </div>
+            <div className="mt-0.5 text-xs text-[#94a3b8]">{def.description}</div>
             <div className="mt-0.5 text-xs">
               {connected ? (
-                <span className="text-gray-500">
+                <span className="text-[#94a3b8]">
                   Connected{status?.account ? ` · ${status.account}` : ''}
                   {status?.lastValidated && (
-                    <span className="text-gray-600"> · validated {formatTimeAgo(status.lastValidated)}</span>
+                    <span className="text-[#64748b]"> · validated {formatTimeAgo(status.lastValidated)}</span>
                   )}
                 </span>
               ) : def.available ? (
-                <span className="text-gray-600">Not connected</span>
+                <span className="text-[#64748b]">Not connected</span>
               ) : (
-                <span className="text-gray-600">{def.oauthNote}</span>
+                <span className="text-[#64748b]">{def.oauthNote}</span>
               )}
             </div>
             {def.channelNote && !connected && def.available && (
-              <div className="mt-0.5 text-[11px] text-gray-600">{def.channelNote}</div>
+              <div className="mt-0.5 text-[11px] text-[#64748b]">{def.channelNote}</div>
             )}
           </div>
         </div>
@@ -493,7 +705,7 @@ function PlatformRow({
           {connected ? (
             confirming ? (
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-gray-500">Sure?</span>
+                <span className="text-xs text-[#94a3b8]">Sure?</span>
                 <Button
                   variant="danger"
                   size="sm"
@@ -555,7 +767,7 @@ function PlatformRow({
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Domain {status?.domain ?? '(no site domain)'} not authenticated
               </div>
-              <div className="text-gray-500">
+              <div className="text-[#94a3b8]">
                 Emails send from @leadorch.io until {status?.domain ?? 'your domain'} is verified.
               </div>
               {status?.domain && (
@@ -570,12 +782,12 @@ function PlatformRow({
 
       {/* Domain-auth explainer (SendGrid) — shown proactively, no click required. */}
       {def.domainAuthHelp && (
-        <details className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-xs">
-          <summary className="cursor-pointer select-none font-medium text-gray-400">
+        <details className="mt-3 rounded-lg border border-[#1e1e2e] bg-white/[0.02] px-3 py-2.5 text-xs">
+          <summary className="cursor-pointer select-none font-medium text-[#94a3b8]">
             📧 About domain authentication
           </summary>
-          <div className="mt-2 space-y-2 text-gray-500">
-            <div className="font-medium text-gray-400">{def.domainAuthHelp.title}</div>
+          <div className="mt-2 space-y-2 text-[#94a3b8]">
+            <div className="font-medium text-[#94a3b8]">{def.domainAuthHelp.title}</div>
             <p>{def.domainAuthHelp.description}</p>
             <ol className="list-decimal space-y-0.5 pl-4">
               {def.domainAuthHelp.steps.map((s, i) => (
@@ -583,10 +795,10 @@ function PlatformRow({
               ))}
             </ol>
             {def.domainAuthHelp.cloudflareNote && (
-              <p className="text-gray-600">Cloudflare: {def.domainAuthHelp.cloudflareNote}</p>
+              <p className="text-[#64748b]">Cloudflare: {def.domainAuthHelp.cloudflareNote}</p>
             )}
             {def.domainAuthHelp.propagationNote && (
-              <p className="text-gray-600">{def.domainAuthHelp.propagationNote}</p>
+              <p className="text-[#64748b]">{def.domainAuthHelp.propagationNote}</p>
             )}
           </div>
         </details>
@@ -599,7 +811,7 @@ function PlatformRow({
 
       {/* Managed platforms (Wix Blog) — administrator-managed, no self-serve connect. */}
       {def.connectionType === 'managed' && def.managedNote && (
-        <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-xs text-gray-500">
+        <div className="mt-3 rounded-lg border border-[#1e1e2e] bg-white/[0.02] px-3 py-2.5 text-xs text-[#94a3b8]">
           {def.managedNote}
         </div>
       )}
@@ -679,7 +891,7 @@ function ConnectModal({
               type="button"
               aria-label={show ? 'Hide key' : 'Show key'}
               onClick={() => setShow((s) => !s)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748b] hover:text-[#f1f5f9]"
             >
               {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -687,14 +899,14 @@ function ConnectModal({
         </div>
 
         {def.apiKeyHelp && (
-          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-xs text-gray-500">
-            <div className="mb-1 font-medium text-gray-400">Where to find this</div>
+          <div className="rounded-lg border border-[#1e1e2e] bg-white/[0.02] px-3 py-2.5 text-xs text-[#94a3b8]">
+            <div className="mb-1 font-medium text-[#94a3b8]">Where to find this</div>
             <ol className="list-decimal space-y-1 pl-4">
               {def.apiKeyHelp.steps.map((s, i) => (
                 <li key={i}>{s}</li>
               ))}
             </ol>
-            {def.apiKeyHelp.note && <p className="mt-2 text-gray-500">{def.apiKeyHelp.note}</p>}
+            {def.apiKeyHelp.note && <p className="mt-2 text-[#94a3b8]">{def.apiKeyHelp.note}</p>}
           </div>
         )}
 
@@ -707,12 +919,12 @@ function ConnectModal({
 
         {channels.length > 0 && (
           <div className="space-y-3">
-            {def.channelNote && <p className="text-xs text-gray-500">{def.channelNote}</p>}
+            {def.channelNote && <p className="text-xs text-[#94a3b8]">{def.channelNote}</p>}
             {channels.map((ch) => (
               <div key={ch.key}>
                 <Label>
                   {ch.label} channel ID{' '}
-                  <span className="font-normal text-gray-600">(optional)</span>
+                  <span className="font-normal text-[#64748b]">(optional)</span>
                 </Label>
                 <Input
                   value={profileIds[ch.key] ?? ''}
@@ -721,10 +933,10 @@ function ConnectModal({
                   className="font-mono"
                 />
                 <details className="mt-1">
-                  <summary className="cursor-pointer select-none text-xs text-gray-500 hover:text-gray-400">
+                  <summary className="cursor-pointer select-none text-xs text-[#94a3b8] hover:text-[#f1f5f9]">
                     How to find this ↓
                   </summary>
-                  <p className="mt-1 text-xs text-gray-600">{ch.help}</p>
+                  <p className="mt-1 text-xs text-[#64748b]">{ch.help}</p>
                 </details>
               </div>
             ))}
@@ -841,7 +1053,7 @@ function DomainAuthModal({
     >
       <div className="space-y-5 p-6 pt-2">
         {isFetching && !data && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-[#94a3b8]">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading DNS records…
           </div>
         )}
@@ -854,7 +1066,7 @@ function DomainAuthModal({
         {data && (
           <>
             <div>
-              <div className="mb-1.5 text-sm font-medium text-gray-300">1. Choose your DNS provider</div>
+              <div className="mb-1.5 text-sm font-medium text-[#f1f5f9]">1. Choose your DNS provider</div>
               <Select value={provider} onChange={(e) => setProvider(e.target.value)} className="max-w-xs">
                 {DNS_PROVIDERS.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -862,12 +1074,12 @@ function DomainAuthModal({
                   </option>
                 ))}
               </Select>
-              <p className="mt-1.5 text-xs text-gray-500">{providerNote}</p>
+              <p className="mt-1.5 text-xs text-[#94a3b8]">{providerNote}</p>
             </div>
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <div className="text-sm font-medium text-gray-300">2. Add these CNAME records</div>
+                <div className="text-sm font-medium text-[#f1f5f9]">2. Add these CNAME records</div>
                 <Button variant="ghost" size="sm" onClick={copyAll}>
                   {copied ? (
                     <>
@@ -880,9 +1092,9 @@ function DomainAuthModal({
                   )}
                 </Button>
               </div>
-              <div className="overflow-hidden rounded-lg border border-white/[0.06]">
+              <div className="overflow-hidden rounded-lg border border-[#1e1e2e]">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-white/[0.03] text-gray-500">
+                  <thead className="bg-white/[0.03] text-[#94a3b8]">
                     <tr>
                       <th className="px-3 py-2 font-medium">Type</th>
                       <th className="px-3 py-2 font-medium">Name</th>
@@ -892,15 +1104,15 @@ function DomainAuthModal({
                   </thead>
                   <tbody className="font-mono">
                     {records.map((r) => (
-                      <tr key={r.name} className="border-t border-white/[0.04]">
-                        <td className="px-3 py-2 text-gray-400">{r.type}</td>
-                        <td className="break-all px-3 py-2 text-gray-200">{r.name}</td>
-                        <td className="break-all px-3 py-2 text-gray-400">{r.value}</td>
+                      <tr key={r.name} className="border-t border-[#1e1e2e]">
+                        <td className="px-3 py-2 text-[#94a3b8]">{r.type}</td>
+                        <td className="break-all px-3 py-2 text-[#f1f5f9]">{r.name}</td>
+                        <td className="break-all px-3 py-2 text-[#94a3b8]">{r.value}</td>
                         <td className="px-3 py-2">
                           {r.valid ? (
                             <Check className="h-3.5 w-3.5 text-emerald-400" />
                           ) : (
-                            <span className="text-gray-600">—</span>
+                            <span className="text-[#64748b]">—</span>
                           )}
                         </td>
                       </tr>
@@ -911,8 +1123,8 @@ function DomainAuthModal({
             </div>
 
             <div>
-              <div className="mb-1 text-sm font-medium text-gray-300">3. Verify (after adding records)</div>
-              <p className="mb-2 text-xs text-gray-500">DNS propagation takes 5–30 minutes.</p>
+              <div className="mb-1 text-sm font-medium text-[#f1f5f9]">3. Verify (after adding records)</div>
+              <p className="mb-2 text-xs text-[#94a3b8]">DNS propagation takes 5–30 minutes.</p>
               <div className="flex flex-wrap items-center gap-3">
                 <Button onClick={runVerify} disabled={verify.isPending}>
                   {verify.isPending ? (
@@ -934,8 +1146,8 @@ function DomainAuthModal({
                   </span>
                 )}
                 {!verify.isPending && !verified && result === 'idle' && (
-                  <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <span className="h-2 w-2 rounded-full bg-gray-600" /> Pending verification
+                  <span className="flex items-center gap-1.5 text-xs text-[#94a3b8]">
+                    <span className="h-2 w-2 rounded-full bg-[#64748b]" /> Pending verification
                   </span>
                 )}
               </div>
@@ -976,6 +1188,29 @@ const DOC_TYPE_BADGE: Record<string, { variant: BadgeVariant; className?: string
   },
 }
 
+// Matches a bare UUID (optionally followed by a separator + the rest of a name)
+// at the START of a string. golden_example rows are often keyed by a UUID with
+// no human filename; we defensively strip a leading UUID so the table isn't a
+// wall of identifiers. DocumentRow carries no preview text, so we never invent
+// content — we only clean the existing filename.
+const UUID_PREFIX_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}([._\-\s]+(.+))?$/i
+const BARE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Human-friendly display name for a document row. For golden_example rows whose
+ * filename is (or starts with) a UUID, strip the UUID prefix; if the whole name
+ * is just a UUID, fall back to a short label. Non-golden rows keep their name.
+ */
+function docDisplayName(doc: DocumentRow): string {
+  const name = doc.sourceFilename
+  if (doc.documentType !== 'golden_example') return name
+  if (BARE_UUID_RE.test(name)) return 'Golden example'
+  const m = UUID_PREFIX_RE.exec(name)
+  if (m && m[2]) return m[2].slice(0, 60)
+  return name
+}
+
 type UploadStage = 'uploading' | 'extracting' | 'embedding' | 'done' | 'failed'
 
 const STAGE_LABEL: Record<UploadStage, string> = {
@@ -998,6 +1233,9 @@ function CorpusTab() {
   const [uploadPct, setUploadPct] = useState(0)
   const [result, setResult] = useState<{ chunks: number; error?: string } | null>(null)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
+  // Client-side table filters.
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
 
   function clearTimers() {
     timers.current.forEach(clearTimeout)
@@ -1048,6 +1286,20 @@ function CorpusTab() {
 
   const busy = stage != null && stage !== 'done' && stage !== 'failed'
 
+  const docs = data ?? []
+  const filtered = docs.filter((doc) => {
+    const matchesType = typeFilter === 'all' || doc.documentType === typeFilter
+    const q = search.trim().toLowerCase()
+    const matchesSearch = !q || doc.sourceFilename.toLowerCase().includes(q)
+    return matchesType && matchesSearch
+  })
+  const totalChunks = docs.reduce((sum, d) => sum + (d.chunkCount ?? 0), 0)
+  const lastIngestedMs = docs.reduce((max, d) => {
+    const t = Date.parse(d.ingestedAt)
+    return Number.isNaN(t) ? max : Math.max(max, t)
+  }, 0)
+  const lastIngestedLabel = lastIngestedMs > 0 ? new Date(lastIngestedMs).toLocaleDateString() : '—'
+
   return (
     <div className="space-y-5">
       <div className="flex items-end gap-3">
@@ -1059,7 +1311,7 @@ function CorpusTab() {
             ))}
           </Select>
         </div>
-        <p className="pb-2 text-xs text-gray-600">
+        <p className="pb-2 text-xs text-[#64748b]">
           Tags every chunk so generation can retrieve by type.
         </p>
       </div>
@@ -1069,13 +1321,13 @@ function CorpusTab() {
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!busy) pick(e.dataTransfer.files) }}
         onClick={() => { if (!busy) fileRef.current?.click() }}
-        className={`glass-sm flex cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed py-10 text-center transition-colors ${dragOver ? 'border-cyan-500/40 bg-cyan-500/[0.04]' : 'border-white/[0.08]'} ${busy ? 'pointer-events-none opacity-70' : ''}`}
+        className={`glass-sm flex cursor-pointer flex-col items-center justify-center gap-2 border-2 border-dashed py-10 text-center transition-colors ${dragOver ? 'border-violet-500/40 bg-violet-500/[0.06]' : 'border-[#1e1e2e]'} ${busy ? 'pointer-events-none opacity-70' : ''}`}
       >
-        <Upload className="h-6 w-6 text-gray-500" />
-        <div className="text-sm text-gray-400">
-          Drag &amp; drop or <span className="text-cyan-400">browse</span>
+        <Upload className="h-6 w-6 text-[#64748b]" />
+        <div className="text-sm text-[#94a3b8]">
+          Drag &amp; drop or <span className="text-[#8b5cf6]">browse</span>
         </div>
-        <div className="text-xs text-gray-600">.pdf, .docx, .md, .txt · max 10MB</div>
+        <div className="text-xs text-[#64748b]">.pdf, .docx, .md, .txt · max 10MB</div>
         <input
           ref={fileRef}
           type="file"
@@ -1091,15 +1343,44 @@ function CorpusTab() {
         )}
       </div>
 
+      {/* Toolbar: search + type filter */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="sm:flex-1">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search documents by filename…"
+          />
+        </div>
+        <div className="sm:w-56">
+          <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="all">All types</option>
+            {DOCUMENT_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      {/* Summary strip */}
+      <div className="text-xs text-[#64748b]">
+        {docs.length} document{docs.length === 1 ? '' : 's'} · {totalChunks} chunk
+        {totalChunks === 1 ? '' : 's'} · Last ingested {lastIngestedLabel}
+      </div>
+
       <Card className="p-2">
         {isLoading ? (
           <div className="space-y-2 p-3">
             {[0, 1, 2].map((i) => <Skeleton key={i} className="h-10" />)}
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-[#64748b]">
+            {docs.length === 0 ? 'No documents yet — upload one above.' : 'No documents match your filters.'}
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-xs text-gray-500">
+              <tr className="text-xs text-[#94a3b8]">
                 <th className="px-4 py-2 text-left font-medium">Filename</th>
                 <th className="px-4 py-2 text-left font-medium">Type</th>
                 <th className="px-4 py-2 text-left font-medium">Ingested</th>
@@ -1109,13 +1390,13 @@ function CorpusTab() {
               </tr>
             </thead>
             <tbody>
-              {(data ?? []).map((doc) => {
+              {filtered.map((doc) => {
                 const badge = DOC_TYPE_BADGE[doc.documentType] ?? { variant: 'gray' as BadgeVariant }
                 const failed = doc.extractionStatus === 'failed'
                 const reingesting = reingest.isPending && reingest.variables === doc.id
                 return (
-                  <tr key={doc.id} className="border-t border-white/[0.04]">
-                    <td className="px-4 py-2.5 text-gray-200">{doc.sourceFilename}</td>
+                  <tr key={doc.id} className="border-t border-[#1e1e2e]">
+                    <td className="break-all px-4 py-2.5 text-[#f1f5f9]">{docDisplayName(doc)}</td>
                     <td className="px-4 py-2.5">
                       <Badge variant={badge.variant} className={badge.className}>
                         {doc.documentType}
@@ -1124,13 +1405,13 @@ function CorpusTab() {
                         <Badge variant="red" className="ml-1">failed</Badge>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-500">
+                    <td className="px-4 py-2.5 text-xs text-[#94a3b8]">
                       {new Date(doc.ingestedAt).toLocaleDateString()}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-gray-400">
-                      {doc.chunkCount} <span className="text-xs text-gray-600">chunks</span>
+                    <td className="px-4 py-2.5 text-right text-[#94a3b8]">
+                      {doc.chunkCount} <span className="text-xs text-[#64748b]">chunks</span>
                     </td>
-                    <td className="px-4 py-2.5 text-right text-gray-400">v{doc.version}</td>
+                    <td className="px-4 py-2.5 text-right text-[#94a3b8]">v{doc.version}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -1195,13 +1476,13 @@ function UploadProgress({
   const barPct = stage === 'uploading' ? pct : Math.round(((activeIdx + 1) / STAGE_ORDER.length) * 100)
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+      <div className="flex items-center justify-center gap-1.5 text-xs text-[#94a3b8]">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         {STAGE_LABEL[stage]}
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
+          className="h-full rounded-full bg-gradient-to-r from-[#7c3aed] to-[#8b5cf6] transition-all"
           style={{ width: `${barPct}%` }}
         />
       </div>
@@ -1245,16 +1526,16 @@ function ImportHistoryTab() {
       {/* What this does */}
       <Card className="space-y-2 p-5">
         <div className="flex items-center gap-2">
-          <DownloadCloud className="h-4 w-4 text-cyan-400" />
-          <h2 className="text-sm font-semibold text-gray-100">Import historical content</h2>
+          <DownloadCloud className="h-4 w-4 text-[#8b5cf6]" />
+          <h2 className="text-sm font-semibold text-[#f1f5f9]">Import historical content</h2>
         </div>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-[#94a3b8]">
           Pulls your already-published Buffer posts and their real engagement into hailmery as{' '}
-          <span className="text-gray-200">measured</span> content. The top performers become golden
+          <span className="text-[#f1f5f9]">measured</span> content. The top performers become golden
           examples that steer future generation toward what actually worked.
         </p>
-        <ul className="mt-1 space-y-1 text-xs text-gray-500">
-          <li>• This imports <span className="text-gray-300">historical</span> content for training — it does not publish anything new.</li>
+        <ul className="mt-1 space-y-1 text-xs text-[#94a3b8]">
+          <li>• This imports <span className="text-[#f1f5f9]">historical</span> content for training — it does not publish anything new.</li>
           <li>• Posts already in hailmery are skipped, so it is safe to re-run.</li>
           <li>• Better signal here makes every future generated post sound more like your best work.</li>
         </ul>
@@ -1265,8 +1546,8 @@ function ImportHistoryTab() {
         <div className="flex items-center justify-between">
           <Label>Channels to import</Label>
           <span className="flex items-center gap-1.5 text-xs">
-            <span className={`h-2 w-2 rounded-full ${bufferConnected ? 'bg-emerald-400' : 'bg-gray-600'}`} />
-            <span className="text-gray-500">Buffer {bufferConnected ? 'connected' : 'not connected'}</span>
+            <span className={`h-2 w-2 rounded-full ${bufferConnected ? 'bg-emerald-400' : 'bg-[#64748b]'}`} />
+            <span className="text-[#94a3b8]">Buffer {bufferConnected ? 'connected' : 'not connected'}</span>
           </span>
         </div>
 
@@ -1282,25 +1563,25 @@ function ImportHistoryTab() {
                 onClick={() => setSelected((s) => ({ ...s, [key]: !s[key] }))}
                 className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${
                   on
-                    ? 'border-cyan-500/40 bg-cyan-500/[0.06]'
-                    : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]'
+                    ? 'border-violet-500/40 bg-violet-500/[0.08]'
+                    : 'border-[#1e1e2e] bg-white/[0.02] hover:bg-white/[0.04]'
                 }`}
               >
                 <span
                   className={`flex items-center justify-center rounded-md border transition-all ${
-                    on ? 'border-cyan-500/60 bg-cyan-500/20 text-cyan-300' : 'border-white/[0.12] bg-white/[0.03]'
+                    on ? 'border-violet-500/60 bg-violet-500/20 text-violet-300' : 'border-white/[0.12] bg-white/[0.03]'
                   }`}
                   style={{ width: 18, height: 18 }}
                 >
                   {on && <Check className="h-3 w-3" strokeWidth={3} />}
                 </span>
                 <Icon className={`h-4 w-4 ${meta.iconClass}`} />
-                <span className="text-sm text-gray-200">{meta.label}</span>
+                <span className="text-sm text-[#f1f5f9]">{meta.label}</span>
               </button>
             )
           })}
         </div>
-        <p className="text-xs text-gray-600">
+        <p className="text-xs text-[#64748b]">
           Only channels connected in Buffer for this tenant will return posts; others are skipped with a note.
         </p>
 
@@ -1323,7 +1604,7 @@ function ImportHistoryTab() {
             {dryRun ? 'Preview import' : 'Import selected history'}
           </Button>
           {importMut.isPending && (
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-[#94a3b8]">
               Fetching from Buffer{dryRun ? '' : ', scoring & promoting'}… this can take up to a minute.
             </span>
           )}
@@ -1347,7 +1628,7 @@ function ImportResultCard({ result }: { result: BufferImportResult }) {
   const importedLabel = result.dryRun ? 'Would import' : 'Imported'
   const stats: Array<{ label: string; value: number; accent?: string }> = [
     { label: 'Fetched', value: result.fetched },
-    { label: importedLabel, value: result.imported, accent: 'text-cyan-300' },
+    { label: importedLabel, value: result.imported, accent: 'text-violet-300' },
     { label: 'Already existed', value: result.skipped },
     { label: 'Scored', value: result.scored },
     { label: 'Golden examples', value: result.goldenExamples, accent: 'text-yellow-300' },
@@ -1356,23 +1637,23 @@ function ImportResultCard({ result }: { result: BufferImportResult }) {
     <Card className="space-y-4 p-5">
       <div className="flex items-center gap-2">
         {result.dryRun ? (
-          <Sparkles className="h-4 w-4 text-cyan-400" />
+          <Sparkles className="h-4 w-4 text-[#8b5cf6]" />
         ) : (
           <CheckCircle2 className="h-4 w-4 text-emerald-400" />
         )}
-        <h3 className="text-sm font-semibold text-gray-100">
+        <h3 className="text-sm font-semibold text-[#f1f5f9]">
           {result.dryRun ? 'Preview complete' : 'Import complete'}
         </h3>
         {result.dryRun && (
-          <Badge variant="cyan" className="ml-1">dry run — nothing written</Badge>
+          <Badge variant="purple" className="ml-1">dry run — nothing written</Badge>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-3">
-            <div className={`text-2xl font-semibold ${s.accent ?? 'text-gray-100'}`}>{s.value}</div>
-            <div className="text-xs text-gray-500">{s.label}</div>
+          <div key={s.label} className="rounded-lg border border-[#1e1e2e] bg-white/[0.02] px-3 py-3">
+            <div className={`text-2xl font-semibold ${s.accent ?? 'text-[#f1f5f9]'}`}>{s.value}</div>
+            <div className="text-xs text-[#94a3b8]">{s.label}</div>
           </div>
         ))}
       </div>
@@ -1382,13 +1663,13 @@ function ImportResultCard({ result }: { result: BufferImportResult }) {
         <div className="space-y-1.5">
           {result.channels.map((c) => (
             <div key={c.channel} className="flex items-center gap-2 text-xs">
-              <span className="w-20 text-gray-400">{CHANNELS[c.channel]?.label ?? c.channel}</span>
+              <span className="w-20 text-[#94a3b8]">{CHANNELS[c.channel]?.label ?? c.channel}</span>
               {c.error ? (
                 <span className="flex items-center gap-1 text-red-300">
                   <AlertTriangle className="h-3 w-3" /> {c.error}
                 </span>
               ) : (
-                <span className="text-gray-500">
+                <span className="text-[#94a3b8]">
                   fetched {c.fetched} · {result.dryRun ? 'would import' : 'imported'} {c.imported} · skipped {c.skipped}
                 </span>
               )}
@@ -1400,18 +1681,18 @@ function ImportResultCard({ result }: { result: BufferImportResult }) {
       {/* Top performers — these are what become golden examples */}
       {result.topPerformers.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-[#94a3b8]">
             <Sparkles className="h-3.5 w-3.5 text-yellow-300" /> Top imported performers
           </div>
           {result.topPerformers.map((p, i) => (
             <div
               key={p.draftId}
-              className="flex items-start gap-3 rounded-lg border border-white/[0.04] bg-white/[0.02] px-3 py-2"
+              className="flex items-start gap-3 rounded-lg border border-[#1e1e2e] bg-white/[0.02] px-3 py-2"
             >
-              <span className="mt-0.5 text-xs text-gray-600">#{i + 1}</span>
+              <span className="mt-0.5 text-xs text-[#64748b]">#{i + 1}</span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-xs text-gray-300">{p.preview || '(no text)'}</div>
-                <div className="mt-0.5 text-[11px] text-gray-500">
+                <div className="truncate text-xs text-[#f1f5f9]">{p.preview || '(no text)'}</div>
+                <div className="mt-0.5 text-[11px] text-[#94a3b8]">
                   {p.performanceScore != null && (
                     <span className="text-yellow-300/90">score {p.performanceScore.toFixed(2)}</span>
                   )}
@@ -1450,6 +1731,7 @@ function ScheduleTab() {
   )
 
   const [config, setConfig] = useState<Record<string, ChannelSchedule>>({})
+  const [baseline, setBaseline] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -1468,9 +1750,12 @@ function ScheduleTab() {
       next.linkedin = { postsPerWeek: 3, days: ['Mon', 'Wed', 'Fri'], time: '09:00' }
     }
     setConfig(next)
+    setBaseline(JSON.stringify(next))
   }, [evergreen])
 
   if (isLoading) return <Skeleton className="h-96 rounded-2xl" />
+
+  const isDirty = baseline !== null && JSON.stringify(config) !== baseline
 
   function update(ch: string, partial: Partial<ChannelSchedule>) {
     setConfig((prev) => ({ ...prev, [ch]: { ...prev[ch], ...partial } }))
@@ -1487,91 +1772,118 @@ function ScheduleTab() {
     if (!evergreen) return
     patch.mutate(
       { id: evergreen.id, patch: { channelConfig: config } },
-      { onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 2500) } },
+      {
+        onSuccess: () => {
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2500)
+          setBaseline(JSON.stringify(config))
+        },
+      },
     )
   }
 
-  return (
-    <Card className="space-y-5 p-6">
-      <div className="text-xs text-gray-500">
-        Cadence for the default evergreen campaign · timezone{' '}
-        <span className="text-gray-300">{tz}</span>
-      </div>
+  function onDiscard() {
+    if (baseline === null) return
+    setConfig(JSON.parse(baseline) as Record<string, ChannelSchedule>)
+  }
 
-      {SELECTABLE_CHANNELS.filter((c) => c.kind !== 'blog' || true).map((ch) => {
-        const sched = config[ch.key]
-        const enabled = !!sched
-        return (
-          <div
-            key={ch.key}
-            className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
-          >
-            <div className="flex items-center justify-between">
-              <Checkbox
-                checked={enabled}
-                onChange={(v) =>
-                  v
-                    ? update(ch.key, { postsPerWeek: 3, days: ['Mon', 'Wed', 'Fri'], time: '09:00' })
-                    : setConfig((prev) => {
-                        const next = { ...prev }
-                        delete next[ch.key]
-                        return next
-                      })
-                }
-                label={ch.label}
-              />
+  return (
+    <div className="space-y-0">
+      <Card className="space-y-5 p-6">
+        <div className="text-xs text-[#94a3b8]">
+          Cadence for the default evergreen campaign · timezone{' '}
+          <span className="text-[#f1f5f9]">{tz}</span>
+        </div>
+
+        {SELECTABLE_CHANNELS.filter((c) => c.kind !== 'blog' || true).map((ch) => {
+          const sched = config[ch.key]
+          const enabled = !!sched
+          return (
+            <div
+              key={ch.key}
+              className="rounded-lg border border-[#1e1e2e] bg-white/[0.02] p-4"
+            >
+              <div className="flex items-center justify-between">
+                <Checkbox
+                  checked={enabled}
+                  onChange={(v) =>
+                    v
+                      ? update(ch.key, { postsPerWeek: 3, days: ['Mon', 'Wed', 'Fri'], time: '09:00' })
+                      : setConfig((prev) => {
+                          const next = { ...prev }
+                          delete next[ch.key]
+                          return next
+                        })
+                  }
+                  label={ch.label}
+                />
+                {enabled && (
+                  <div className="flex items-center gap-2 text-xs text-[#94a3b8]">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={21}
+                      value={sched.postsPerWeek}
+                      onChange={(e) => update(ch.key, { postsPerWeek: Number(e.target.value) })}
+                      className="h-8 w-16 px-2 py-1 text-center"
+                    />
+                    /week
+                    <Input
+                      type="time"
+                      value={sched.time}
+                      onChange={(e) => update(ch.key, { time: e.target.value })}
+                      className="h-8 w-28 px-2 py-1"
+                    />
+                  </div>
+                )}
+              </div>
               {enabled && (
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={21}
-                    value={sched.postsPerWeek}
-                    onChange={(e) => update(ch.key, { postsPerWeek: Number(e.target.value) })}
-                    className="h-8 w-16 px-2 py-1 text-center"
-                  />
-                  /week
-                  <Input
-                    type="time"
-                    value={sched.time}
-                    onChange={(e) => update(ch.key, { time: e.target.value })}
-                    className="h-8 w-28 px-2 py-1"
-                  />
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {DOW.map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => toggleDay(ch.key, d)}
+                      aria-pressed={sched.days.includes(d)}
+                      aria-label={`${d}${sched.days.includes(d) ? ' (selected)' : ''}`}
+                      className={`rounded-lg px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 ${
+                        sched.days.includes(d)
+                          ? 'bg-violet-500/15 text-violet-300'
+                          : 'bg-white/[0.04] text-[#94a3b8] hover:bg-white/[0.08]'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
-            {enabled && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {DOW.map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => toggleDay(ch.key, d)}
-                    className={`rounded-lg px-2.5 py-1 text-xs transition-colors ${
-                      sched.days.includes(d)
-                        ? 'bg-cyan-500/15 text-cyan-300'
-                        : 'bg-white/[0.04] text-gray-500 hover:bg-white/[0.08]'
-                    }`}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
+          )
+        })}
 
-      <div className="flex items-center gap-3">
-        <Button onClick={onSave} disabled={patch.isPending || !evergreen}>
-          {patch.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Save schedule
-        </Button>
-        {saved && (
-          <span className="flex items-center gap-1 text-sm text-emerald-400">
-            <CheckCircle2 className="h-4 w-4" /> Saved
-          </span>
-        )}
-      </div>
-    </Card>
+        <div className="flex items-center gap-3">
+          <Button onClick={onSave} disabled={patch.isPending || !evergreen || !isDirty}>
+            {patch.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save schedule
+          </Button>
+          {saved && (
+            <span className="flex items-center gap-1 text-sm text-emerald-400">
+              <CheckCircle2 className="h-4 w-4" /> Saved
+            </span>
+          )}
+        </div>
+      </Card>
+
+      {isDirty && (
+        <div className="sticky bottom-0 z-20 -mx-1 mt-6 flex justify-end gap-3 border-t border-[#1e1e2e] bg-[#0a0a0f]/95 px-1 py-3 backdrop-blur">
+          <Button variant="ghost" onClick={onDiscard} disabled={patch.isPending}>
+            Discard
+          </Button>
+          <Button onClick={onSave} disabled={patch.isPending || !evergreen}>
+            {patch.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }
