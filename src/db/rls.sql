@@ -224,6 +224,7 @@ BEGIN
     SELECT schemaname, tablename, policyname
     FROM pg_policies
     WHERE schemaname = 'marketing'
+      AND tablename <> 'users'  -- users manages its own policy (cross-tenant, no tenant_id)
   LOOP
     EXECUTE format('DROP POLICY %I ON %I.%I',
       pol.policyname, pol.schemaname, pol.tablename);
@@ -246,6 +247,7 @@ BEGIN
     SELECT tablename
     FROM pg_tables
     WHERE schemaname = 'marketing'
+      AND tablename <> 'users'  -- users has no tenant_id; the uniform policy would error
   LOOP
     EXECUTE format($p$
       CREATE POLICY tenant_isolation ON marketing.%I
@@ -304,3 +306,35 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA marketing
 -- The password will be set via Neon dashboard.
 -- Connection string format:
 -- postgresql://hailmery_app:PASSWORD@host/db
+
+-- ──────────────────────────────────────────────────────────────────
+-- 8. Users table (JWT auth, session 14).
+--    Cross-tenant by design: a user's accessible tenants live in
+--    allowed_tenant_ids (uuid[]), NOT a single tenant_id column. Because it has
+--    no tenant_id, it is EXCLUDED from the uniform tenant_isolation loops above
+--    (sections 4 & 5) — that policy references `tenant_id` and would error here.
+--    Its RLS policy is permissive (USING true); authorization for this table is
+--    enforced at the app layer (login looks a user up by verified Google email,
+--    then the JWT carries allowed_tenant_ids). Placed at the END so the
+--    hailmery_app role (section 7) already exists for the GRANT.
+-- ──────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS marketing.users (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- uniqueness comes from users_email_idx below (a single arbiter so the seed's
+  -- ON CONFLICT (email) infers unambiguously — no redundant inline UNIQUE).
+  email              text NOT NULL,
+  name               text,
+  allowed_tenant_ids uuid[] NOT NULL DEFAULT '{}',
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  last_login_at      timestamptz
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON marketing.users(email);
+
+ALTER TABLE marketing.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketing.users FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS users_isolation ON marketing.users;
+CREATE POLICY users_isolation ON marketing.users
+  USING (true) WITH CHECK (true);  -- auth handled at app layer, not RLS
+
+GRANT SELECT, INSERT, UPDATE ON marketing.users TO hailmery_app;

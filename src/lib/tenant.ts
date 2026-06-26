@@ -6,12 +6,47 @@
 
 import { sql } from 'drizzle-orm';
 import type { NeonDatabase } from 'drizzle-orm/neon-serverless';
+import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { decryptSecret } from './secrets.js';
+import type { HailmeryTokenPayload } from './auth.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function assertUuid(s: string, label = 'value'): asserts s is string {
   if (!UUID_RE.test(s)) throw new Error(`${label} is not a UUID: ${s}`);
+}
+
+/**
+ * Validates that the authenticated user may access the X-Tenant-ID they sent.
+ * Returns the validated tenant id, or throws an HTTPException (401 if the auth
+ * middleware somehow didn't run, 403 if the tenant isn't in the caller's grant,
+ * 400 if the header is missing/malformed).
+ *
+ * NOTE: the primary tenant-ownership gate is the auth middleware
+ * (src/middleware/auth.ts), which rejects a non-owned X-Tenant-ID before any
+ * route runs. This helper is the per-route equivalent — use it in any handler
+ * that derives the tenant from somewhere OTHER than the X-Tenant-ID header (so
+ * the middleware's header check wouldn't apply). Call it AFTER authMiddleware.
+ */
+export function assertTenantAccess(c: Context): string {
+  const tenantId = c.req.header('X-Tenant-ID') ?? '';
+  try {
+    assertUuid(tenantId, 'X-Tenant-ID');
+  } catch {
+    throw new HTTPException(400, { message: 'Valid X-Tenant-ID header required' });
+  }
+
+  const user = c.var.user as HailmeryTokenPayload | undefined;
+  if (!user) {
+    throw new HTTPException(401, { message: 'Not authenticated' });
+  }
+  if (!user.allowedTenants.includes(tenantId)) {
+    throw new HTTPException(403, {
+      message: `Access denied: your account cannot access tenant ${tenantId}`,
+    });
+  }
+  return tenantId;
 }
 
 export async function withTenantDb<T>(

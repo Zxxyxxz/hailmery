@@ -15,6 +15,7 @@ import { makeDb } from '../db/client.js';
 import { withTenantDb, assertUuid, findFirstSiteForTenant, loadPlatformToken } from '../lib/tenant.js';
 import { encryptSecret, decryptSecret } from '../lib/secrets.js';
 import { loadSecret, loadProfileMap } from '../lib/credentials.js';
+import { signJwt } from '../lib/auth.js';
 import { resolveEmailRecipients } from '../services/recipients.js';
 import { brandGuardian } from '../agents/guardian.js';
 import {
@@ -61,6 +62,8 @@ type ApiEnv = {
   ANTHROPIC_API_KEY: string;
   OPENAI_API_KEY: string;
   SECRETS_KEY: string;
+  // Signing key for hailmery session JWTs (the Google login flow issues them).
+  JWT_SECRET: string;
   IDEOGRAM_API_KEY?: string;
   GOOGLE_API_KEY?: string;
   // Google OAuth client config — used by the /api/auth/google/* routes (token
@@ -182,9 +185,16 @@ function normalizeDraft(r: Row) {
 }
 
 // ── GET /api/tenants ────────────────────────────────────────────────
-// Fleet-wide list for the tenant switcher (runs with rls_bypass).
+// The tenants THIS authenticated user is allowed to see (for the tenant
+// switcher). The auth middleware has verified the JWT and set c.var.user; we
+// filter by user.allowedTenants with an explicit id predicate rather than RLS
+// because this query intentionally spans multiple tenants.
 
 api.get('/tenants', async (c) => {
+  const user = c.var.user;
+  const allowed = Array.isArray(user?.allowedTenants) ? user.allowedTenants : [];
+  if (allowed.length === 0) return c.json([]);
+
   const db = makeDb(c.env.DATABASE_URL);
   const rows = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.rls_bypass', 'true', true)`);
@@ -195,6 +205,10 @@ api.get('/tenants', async (c) => {
         SELECT id, domain FROM marketing.sites
         WHERE tenant_id = t.id ORDER BY created_at LIMIT 1
       ) s ON true
+      WHERE t.id = ANY(ARRAY[${sql.join(
+        allowed.map((id) => sql`${id}`),
+        sql`, `,
+      )}]::uuid[])
       ORDER BY t.created_at
     `);
     return r.rows;
@@ -1440,6 +1454,144 @@ api.get('/auth/google/callback', async (c) => {
 
   bustConnectionCache(tenantId, GOOGLE_PLATFORM);
   return c.html(oauthPopupHtml({ type: 'google-oauth-success', account: email, scopes }));
+});
+
+// ── Dashboard login via Google (issues a hailmery JWT) ──────────────
+// Parallel to the GSC connect OAuth above but a DIFFERENT flow: it requests only
+// openid/email/profile (no offline access, no Google tokens stored), looks the
+// verified email up in marketing.users, and — if found — postMessages a signed
+// hailmery JWT back to the dashboard popup opener. These routes are in the auth
+// middleware's PUBLIC_PATHS (a login popup can't carry a bearer token). The
+// redirect_uri below MUST be registered in the Google Cloud OAuth client.
+
+// GET /api/auth/login/google/start — kick off the login consent screen.
+api.get('/auth/login/google/start', async (c) => {
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return c.text('Google OAuth is not configured on this server', 500);
+
+  // HMAC-signed CSRF state (SECRETS_KEY-keyed, same helper the GSC flow uses);
+  // purpose:'login' distinguishes it from the connect flow's state.
+  const state = await generateOAuthState(c.env.SECRETS_KEY, {
+    purpose: 'login',
+    tenantId: c.req.query('tenant') ?? '',
+  });
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: `${new URL(c.req.url).origin}/api/auth/login/google/callback`,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    access_type: 'online', // login only — no refresh token needed
+    prompt: 'select_account',
+  });
+  return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+// GET /api/auth/login/google/callback — exchange the code, look up the user,
+// issue the hailmery JWT. Always returns popup HTML so the window closes and the
+// opener is notified (success carries the token; failures carry an error code).
+api.get('/auth/login/google/callback', async (c) => {
+  const code = c.req.query('code');
+  const state = c.req.query('state') ?? '';
+  const oauthError = c.req.query('error');
+  if (oauthError) {
+    return c.html(oauthPopupHtml({ type: 'hailmery-login', error: oauthError.slice(0, 80) }), 400);
+  }
+
+  const payload = await verifyOAuthState(c.env.SECRETS_KEY, state);
+  if (!payload || payload.purpose !== 'login' || !code) {
+    return c.html(oauthPopupHtml({ type: 'hailmery-login', error: 'invalid_state' }), 400);
+  }
+
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  const clientSecret = c.env.GOOGLE_CLIENT_SECRET;
+  const jwtSecret = c.env.JWT_SECRET;
+  if (!clientId || !clientSecret || !jwtSecret) {
+    return c.html(oauthPopupHtml({ type: 'hailmery-login', error: 'server_misconfigured' }), 500);
+  }
+
+  // Exchange the code for an access token (own exchange — the login redirect_uri
+  // differs from the shared exchangeCodeForTokens() helper's GSC redirect_uri).
+  const origin = new URL(c.req.url).origin;
+  let accessToken: string;
+  try {
+    const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: `${origin}/api/auth/login/google/callback`,
+        grant_type: 'authorization_code',
+      }),
+    });
+    const tokenData = (await tokenResp.json()) as { access_token?: string };
+    if (!tokenData.access_token) {
+      return c.html(oauthPopupHtml({ type: 'hailmery-login', error: 'token_exchange_failed' }), 400);
+    }
+    accessToken = tokenData.access_token;
+  } catch {
+    return c.html(oauthPopupHtml({ type: 'hailmery-login', error: 'token_exchange_failed' }), 400);
+  }
+
+  // Identify the Google account.
+  const googleUser = (await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+    .then((r) => r.json())
+    .catch(() => null)) as { email?: string; email_verified?: boolean } | null;
+  const email = typeof googleUser?.email === 'string' ? googleUser.email.toLowerCase() : '';
+  if (!email) {
+    return c.html(oauthPopupHtml({ type: 'hailmery-login', error: 'no_email' }), 400);
+  }
+  // Trust the email ONLY when Google asserts it's verified. The allow-list is
+  // keyed on email, so an account presenting an unverified address that matches
+  // an allow-listed user must NOT be able to log in as them. This is the single
+  // trust boundary the whole auth system rests on.
+  if (googleUser?.email_verified !== true) {
+    return c.html(oauthPopupHtml({ type: 'hailmery-login', error: 'email_unverified' }), 403);
+  }
+
+  // Look the verified email up in the allow-list. Unknown email → access denied.
+  const db = makeDb(c.env.DATABASE_URL);
+  const userRows = await db.execute<Row>(sql`
+    SELECT id, email, name, allowed_tenant_ids
+    FROM marketing.users
+    WHERE email = ${email}
+    LIMIT 1
+  `);
+  const dbUser = userRows.rows[0];
+  if (!dbUser) {
+    return c.html(
+      oauthPopupHtml({ type: 'hailmery-login', error: 'not_authorized', email }),
+      403,
+    );
+  }
+
+  await db.execute(sql`UPDATE marketing.users SET last_login_at = now() WHERE id = ${dbUser.id}`);
+
+  const allowedTenants = Array.isArray(dbUser.allowed_tenant_ids)
+    ? (dbUser.allowed_tenant_ids as string[])
+    : [];
+  const jwt = await signJwt(
+    {
+      userId: String(dbUser.id),
+      email: String(dbUser.email),
+      name: dbUser.name != null ? String(dbUser.name) : null,
+      allowedTenants,
+    },
+    jwtSecret,
+  );
+
+  return c.html(
+    oauthPopupHtml({
+      type: 'hailmery-login',
+      token: jwt,
+      email: String(dbUser.email),
+      allowedTenants,
+    }),
+  );
 });
 
 // POST /api/debug/sync-gsc — manually trigger the GSC keyword sync for the

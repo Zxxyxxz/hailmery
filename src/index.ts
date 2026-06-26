@@ -26,6 +26,7 @@ import {
 } from './services/mailsync.js';
 import type { SendGridEvent } from './adapters/sendgrid.js';
 import { assertUuid } from './lib/tenant.js';
+import { authMiddleware } from './middleware/auth.js';
 
 type Env = {
   DATABASE_URL: string;
@@ -33,6 +34,9 @@ type Env = {
   ANTHROPIC_API_KEY: string;
   SENDGRID_WEBHOOK_SECRET: string;
   SECRETS_KEY: string;
+  // Signing key for hailmery session JWTs (set via `wrangler secret put
+  // JWT_SECRET`). Distinct from SECRETS_KEY (AES-GCM token encryption).
+  JWT_SECRET: string;
   HUBSPOT_EVENT_TEMPLATE_ID?: string;
   IDEOGRAM_API_KEY?: string;
   GOOGLE_API_KEY?: string;
@@ -64,9 +68,15 @@ app.use(
         ? origin
         : '',
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'X-Tenant-ID'],
+    allowHeaders: ['Content-Type', 'X-Tenant-ID', 'Authorization'],
   }),
 );
+
+// JWT auth gate for every /api route. MUST be registered AFTER cors (so OPTIONS
+// preflight + CORS headers are handled first) and BEFORE app.route('/api', api)
+// (Hono runs matched handlers in registration order). The middleware itself
+// exempts the public paths (login + GSC OAuth callbacks, the asset proxy).
+app.use('/api/*', authMiddleware);
 
 // Dashboard JSON API (approval queue, calendar, campaigns, settings).
 app.route('/api', api);

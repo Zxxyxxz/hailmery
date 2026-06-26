@@ -133,6 +133,24 @@ export const tenants = marketing.table('tenants', {
   slugUq: uniqueIndex('tenants_slug_uq').on(t.slug),
 }));
 
+// Dashboard login accounts (JWT auth, session 14). Cross-tenant by design: the
+// tenants a user may access live in allowed_tenant_ids, so this table has NO
+// tenant_id column and is excluded from the uniform RLS policy (see rls.sql).
+export const users = marketing.table('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // Uniqueness via the explicit users_email_idx below (single arbiter index).
+  email: text('email').notNull(),
+  name: text('name'),
+  allowedTenantIds: uuid('allowed_tenant_ids')
+    .array()
+    .notNull()
+    .default(sql`'{}'::uuid[]`),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+}, (t) => ({
+  emailIdx: uniqueIndex('users_email_idx').on(t.email),
+}));
+
 export const tenantSecrets = marketing.table('tenant_secrets', {
   tenantId: uuid('tenant_id').notNull(),
   platform: text('platform').notNull(),

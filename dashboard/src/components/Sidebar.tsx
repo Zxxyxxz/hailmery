@@ -7,8 +7,10 @@ import {
   Settings as SettingsIcon,
   ChevronsUpDown,
   Check,
+  LogOut,
 } from 'lucide-react'
 import { useTenant } from '@/lib/tenant-context'
+import { useAuth } from '@/lib/auth-context'
 import { Popover } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
@@ -108,6 +110,7 @@ export function Sidebar({
   open?: boolean
   onClose?: () => void
 }) {
+  const { user, logout } = useAuth()
   return (
     <aside
       id="app-sidebar"
@@ -139,8 +142,21 @@ export function Sidebar({
           </NavLink>
         ))}
       </nav>
-      <div className="border-t border-[#1e1e2e] p-3">
+      <div className="space-y-2 border-t border-[#1e1e2e] p-3">
         <TenantSwitcher />
+        <div className="flex items-center justify-between gap-2 px-1">
+          <span className="truncate text-[11px] text-[#64748b]" title={user?.email}>
+            {user?.email}
+          </span>
+          <button
+            onClick={logout}
+            className="flex shrink-0 items-center gap-1 text-[11px] text-[#94a3b8] transition-colors hover:text-[#ef4444]"
+            aria-label="Sign out"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Sign out
+          </button>
+        </div>
       </div>
     </aside>
   )
