@@ -21,8 +21,10 @@ const PUBLIC_PATHS = [
   // Google login (issues the hailmery JWT) — the popup can't carry a bearer token.
   '/api/auth/login/google/start',
   '/api/auth/login/google/callback',
-  // Existing GSC connect OAuth — top-level browser nav, tenant carried in signed state.
-  '/api/auth/google/start',
+  // GSC connect OAuth. NOTE: /api/auth/google/start is intentionally NOT public —
+  // the dashboard fetches it via XHR with the Bearer token so the server can
+  // verify the caller owns the ?tenant= before connecting. Only the callback is
+  // public (Google redirects the browser here; it's verified via signed state).
   '/api/auth/google/callback',
   // Public asset proxy: streamed into <img src> / Buffer posts, which CANNOT send
   // an Authorization header. Keys are unguessable + tenant-namespaced and the

@@ -15,7 +15,7 @@ import { makeDb } from '../db/client.js';
 import { withTenantDb, assertUuid, findFirstSiteForTenant, loadPlatformToken } from '../lib/tenant.js';
 import { encryptSecret, decryptSecret } from '../lib/secrets.js';
 import { loadSecret, loadProfileMap } from '../lib/credentials.js';
-import { signJwt } from '../lib/auth.js';
+import { signJwt, canAccessTenant } from '../lib/auth.js';
 import { resolveEmailRecipients } from '../services/recipients.js';
 import { brandGuardian } from '../agents/guardian.js';
 import {
@@ -139,7 +139,7 @@ api.use('*', async (c, next) => {
 
 // ── helpers ─────────────────────────────────────────────────────────
 
-function err(c: Context, status: 400 | 401 | 404 | 422 | 500 | 502, code: string, message: string) {
+function err(c: Context, status: 400 | 401 | 403 | 404 | 422 | 500 | 502, code: string, message: string) {
   return c.json({ error: message, code }, status);
 }
 
@@ -1362,19 +1362,32 @@ function oauthPopupHtml(payload: Record<string, unknown>): string {
 
 // GET /api/auth/google/start?tenant=<uuid> — kick off consent. tenant comes as a
 // query param (this is a top-level browser navigation, not an XHR with headers).
+// This route is AUTHENTICATED (NOT in the middleware PUBLIC_PATHS): the dashboard
+// fetches it via XHR with the Bearer token and reads { url } from the response,
+// then points the popup at it. Because the request carries the JWT, we verify the
+// caller actually OWNS the ?tenant= they're connecting before minting the signed
+// OAuth state — closing the cross-tenant credential-write gap (a user can no
+// longer install/overwrite another tenant's Google grant).
 api.get('/auth/google/start', async (c) => {
   const tenantId = c.req.query('tenant');
-  if (!tenantId) return c.text('tenant required', 400);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'tenant required');
   try {
     assertUuid(tenantId, 'tenant');
   } catch {
-    return c.text('invalid tenant', 400);
+    return err(c, 422, 'bad_tenant', 'invalid tenant');
   }
+
+  const user = c.var.user;
+  if (!user) return err(c, 401, 'unauthenticated', 'Not authenticated');
+  if (!canAccessTenant(user, tenantId)) {
+    return err(c, 403, 'forbidden', `Access denied: your account cannot access tenant ${tenantId}`);
+  }
+
   const clientId = c.env.GOOGLE_CLIENT_ID;
-  if (!clientId) return c.text('Google OAuth is not configured on this server', 500);
+  if (!clientId) return err(c, 500, 'oauth_not_configured', 'Google OAuth is not configured on this server');
 
   const state = await generateOAuthState(c.env.SECRETS_KEY, { tenantId });
-  return c.redirect(buildGoogleConsentUrl(clientId, state));
+  return c.json({ url: buildGoogleConsentUrl(clientId, state) });
 });
 
 // GET /api/auth/google/callback — Google redirects here with ?code&state (or

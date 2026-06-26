@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTenant } from '@/lib/tenant-context'
-import { toApiError, API_BASE_URL } from '@/lib/api'
+import { api, toApiError, API_BASE_URL } from '@/lib/api'
 import {
   useCampaigns,
   useConnections,
@@ -373,8 +373,10 @@ function PlatformsTab() {
       setToast({ message: 'Select a tenant first', variant: 'error' })
       return
     }
-    const url = `${API_BASE_URL}/api/auth/${def.id}/start?tenant=${encodeURIComponent(currentId)}`
-    const popup = window.open(url, 'hm-oauth-connect', 'width=560,height=720,scrollbars=yes,resizable=yes')
+    // Open a blank popup SYNCHRONOUSLY (preserves the click gesture so the browser
+    // doesn't block it); we navigate it to the consent URL once the authenticated
+    // fetch below returns it.
+    const popup = window.open('', 'hm-oauth-connect', 'width=560,height=720,scrollbars=yes,resizable=yes')
     if (!popup) {
       setToast({ message: 'Popup blocked — allow popups for this site, then try again.', variant: 'error' })
       return
@@ -422,6 +424,20 @@ function PlatformsTab() {
     // which would abort a consent the user may still be completing (the signed
     // state is valid for 10 min). The callback self-closes the popup on finish.
     timeout = setTimeout(detach, 12 * 60 * 1000)
+
+    // Fetch the consent URL via an AUTHENTICATED request (axios injects the Bearer
+    // token; the server verifies the caller owns ?tenant= before minting the OAuth
+    // state), then point the popup at it. A 403 here means the user isn't allowed
+    // that tenant.
+    api
+      .get<{ url: string }>(`/api/auth/${def.id}/start`, { params: { tenant: currentId } })
+      .then((res) => {
+        popup.location.href = res.data.url
+      })
+      .catch((e) => {
+        finish()
+        setToast({ message: `Connection failed: ${toApiError(e).error}`, variant: 'error' })
+      })
   }
 
   if (isLoading) return <Skeleton className="h-96 rounded-2xl" />
