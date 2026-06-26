@@ -341,6 +341,36 @@ export interface ApiError {
   code: string
 }
 
+// ── Blog management ─────────────────────────────────────────────────
+
+/** A single post on the tenant's Wix blog, tagged by who published it. */
+export interface BlogPost {
+  wixPostId: string
+  title: string
+  slug: string
+  url: string
+  firstPublishedDate: string | null
+  lastPublishedDate: string | null
+  source: 'hailmery' | 'pre_existing'
+  /** hailmery-only fields — null for pre-existing posts. */
+  draftId: string | null
+  campaignName: string | null
+  guardianScore: number | null
+  hailmeryPublishedAt: string | null
+}
+
+/** Response from GET /api/blog/posts. */
+export interface BlogPostsResponse {
+  wixConnected: boolean
+  posts: BlogPost[]
+  stats: {
+    total: number
+    hailmery: number
+    preExisting: number
+    avgGuardianScore: number | null
+  }
+}
+
 // ── Weekly intelligence brief ───────────────────────────────────────
 
 export type TopicUrgency = 'breaking' | 'trending' | 'evergreen'

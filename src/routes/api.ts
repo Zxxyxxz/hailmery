@@ -2758,3 +2758,271 @@ api.post('/import/buffer-history', async (c) => {
     return err(c, 500, 'import_failed', (e as Error).message);
   }
 });
+
+// ── Blog management ─────────────────────────────────────────────────────────
+//
+// GET /api/blog/posts — read-only. Fetches EVERY published post on the tenant's
+// Wix blog, then tags each one as published-by-hailmery (matched to a
+// status='published' blog draft) or pre-existing (written in Wix / Kleo / by
+// hand). No writes; the generation/publish pipeline is untouched.
+
+interface WixApiPost {
+  id: string;
+  title?: string;
+  slug?: string;
+  firstPublishedDate?: string;
+  lastPublishedDate?: string;
+  // List Posts returns url as { base, path } (with the URL fieldset); tolerate a
+  // bare string too.
+  url?: { base?: string; path?: string } | string;
+}
+
+interface HailmeryBlogRow {
+  draft_id: string;
+  // published_ref usually holds the resolved post URL (publish.ts prefers
+  // result.url), occasionally the bare Wix post id — we match on either.
+  published_ref: string | null;
+  title: string | null;
+  slug: string | null;
+  guardian_breakdown: Record<string, unknown> | null;
+  payload_guardian_score: string | null;
+  campaign_id: string | null;
+  campaign_name: string | null;
+  published_at: string | null;
+}
+
+interface BlogPostOut {
+  wixPostId: string;
+  title: string;
+  slug: string;
+  url: string;
+  firstPublishedDate: string | null;
+  lastPublishedDate: string | null;
+  source: 'hailmery' | 'pre_existing';
+  draftId: string | null;
+  campaignName: string | null;
+  guardianScore: number | null;
+  hailmeryPublishedAt: string | null;
+}
+
+// Pull the overall 0..1 guardian score out of a stored guardian_breakdown blob.
+// Real shape (src/agents/guardians/index.ts) carries a top-level numeric
+// `overall`. Falls back to averaging the advisory guardians' scores (older
+// breakdowns), then to the score generation stashed on the draft payload.
+function blogGuardianScore(
+  breakdown: Record<string, unknown> | null,
+  payloadScore: string | null,
+): number | null {
+  if (breakdown && typeof breakdown.overall === 'number') return breakdown.overall;
+  if (breakdown) {
+    const advisoryKeys = ['factual', 'brandVoice', 'audienceFit', 'performancePrediction'];
+    const scores = advisoryKeys
+      .map((k) => {
+        const g = breakdown[k] as { score?: number; predictedScore?: number } | undefined;
+        return typeof g?.score === 'number' ? g.score : g?.predictedScore;
+      })
+      .filter((s): s is number => typeof s === 'number');
+    if (scores.length) return scores.reduce((a, b) => a + b, 0) / scores.length;
+  }
+  const n = payloadScore != null ? Number(payloadScore) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+// Last non-empty path segment of a URL/slug-ish string, lowercased. The join key
+// between a hailmery draft (published_ref is usually the full post URL) and a
+// live Wix post (which exposes id + slug + url).
+function blogLastSlug(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const cleaned = String(s).split(/[?#]/)[0].replace(/\/+$/, '');
+  const seg = cleaned.split('/').pop() ?? '';
+  return seg ? seg.toLowerCase() : null;
+}
+
+function blogNormalizeTitle(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const t = s.trim().toLowerCase();
+  return t || null;
+}
+
+function blogWixPostUrl(wp: WixApiPost): string | null {
+  const u = wp.url;
+  if (typeof u === 'string') return u || null;
+  if (u && (u.base || u.path)) return `${u.base ?? ''}${u.path ?? ''}` || null;
+  return null;
+}
+
+api.get('/blog/posts', async (c) => {
+  const tenantId = tenantOf(c);
+  if (!tenantId) return err(c, 400, 'missing_tenant', 'Valid X-Tenant-ID header required');
+
+  const db = makeDb(c.env.DATABASE_URL);
+
+  // ── Step A: Wix credentials. The wix-blog secret stores the raw account API
+  // key as accessToken and the site id in the encrypted profile_map. loadSecret
+  // returns null when the tenant has no Wix blog connected. ──
+  let apiKey: string | null = null;
+  let siteId: string | null = null;
+  try {
+    const secret = await loadSecret(db, tenantId, 'wix-blog', c.env.SECRETS_KEY);
+    if (secret?.accessToken && secret.profileMap?.wixSiteId) {
+      apiKey = secret.accessToken;
+      siteId = secret.profileMap.wixSiteId;
+    }
+  } catch {
+    // missing / undecryptable secret → treated as "not connected" below
+  }
+
+  if (!apiKey || !siteId) {
+    return c.json({
+      wixConnected: false,
+      posts: [] as BlogPostOut[],
+      stats: { total: 0, hailmery: 0, preExisting: 0, avgGuardianScore: null },
+    });
+  }
+
+  // ── Step B: fetch ALL published posts from the Wix Blog API. The List Posts
+  // endpoint returns only published posts (drafts are a separate resource); we
+  // page by offset and stop when a page comes back short. ──
+  const wixPosts: WixApiPost[] = [];
+  const headers = {
+    Authorization: apiKey,
+    'wix-site-id': siteId,
+    'Content-Type': 'application/json',
+  };
+  const PAGE = 100;
+  for (let offset = 0; offset < 5000; offset += PAGE) {
+    const params = new URLSearchParams({
+      'paging.limit': String(PAGE),
+      'paging.offset': String(offset),
+      fieldsets: 'URL',
+    });
+    let resp: Response;
+    try {
+      resp = await fetch(`https://www.wixapis.com/blog/v3/posts?${params}`, { headers });
+    } catch (e) {
+      console.error('[blog/posts] Wix fetch failed:', (e as Error).message);
+      return err(c, 502, 'wix_unreachable', 'Could not reach the Wix Blog API');
+    }
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      console.error('[blog/posts] Wix API error:', resp.status, detail);
+      return c.json({ error: 'Failed to fetch posts from Wix', code: 'wix_error', detail }, 502);
+    }
+    const data = (await resp.json().catch(() => ({}))) as {
+      posts?: WixApiPost[];
+      metaData?: { total?: number; count?: number; offset?: number };
+    };
+    const batch = data.posts ?? [];
+    wixPosts.push(...batch);
+    const total = data.metaData?.total;
+    if (batch.length < PAGE) break;
+    if (typeof total === 'number' && offset + batch.length >= total) break;
+  }
+
+  // ── Step C: hailmery-published blog drafts. publish_log can have several rows
+  // per draft (re-publishes) → MAX() in a subquery keeps one row per draft. ──
+  const rows = await withTenantDb(db, tenantId, async (tx) => {
+    const r = await tx.execute<Row>(sql`
+      SELECT
+        cd.id                          AS draft_id,
+        cd.published_ref               AS published_ref,
+        cd.payload->>'title'           AS title,
+        cd.payload->>'slug'            AS slug,
+        cd.guardian_breakdown          AS guardian_breakdown,
+        cd.payload->>'guardianScore'   AS payload_guardian_score,
+        cd.campaign_id                 AS campaign_id,
+        cam.name                       AS campaign_name,
+        (
+          SELECT MAX(pl.published_at)
+          FROM marketing.publish_log pl
+          WHERE pl.draft_id = cd.id AND pl.tenant_id = ${tenantId}
+        )                              AS published_at
+      FROM marketing.content_drafts cd
+      LEFT JOIN marketing.campaigns cam
+        ON cam.id = cd.campaign_id AND cam.tenant_id = ${tenantId}
+      WHERE cd.tenant_id = ${tenantId}
+        AND lower(cd.channel) IN ('blog', 'wix-blog')
+        AND cd.status = 'published'
+      ORDER BY published_at DESC NULLS LAST
+    `);
+    return r.rows as HailmeryBlogRow[];
+  });
+
+  // Index hailmery drafts by every key a Wix post might match on.
+  const byKey = new Map<string, HailmeryBlogRow>();
+  const addKey = (k: string | null, row: HailmeryBlogRow) => {
+    if (k && !byKey.has(k)) byKey.set(k, row);
+  };
+  for (const row of rows) {
+    if (row.published_ref) {
+      addKey(`id:${row.published_ref}`, row); // ref == bare Wix post id OR full URL
+      const refSlug = blogLastSlug(row.published_ref);
+      if (refSlug) addKey(`slug:${refSlug}`, row); // ref is usually a URL → its tail is the slug
+    }
+    if (row.slug) addKey(`slug:${row.slug.toLowerCase()}`, row);
+    const t = blogNormalizeTitle(row.title);
+    if (t) addKey(`title:${t}`, row);
+  }
+
+  const matchRow = (wp: WixApiPost): HailmeryBlogRow | undefined => {
+    const url = blogWixPostUrl(wp);
+    const urlSlug = blogLastSlug(url);
+    const titleKey = blogNormalizeTitle(wp.title);
+    return (
+      byKey.get(`id:${wp.id}`) ??
+      (url ? byKey.get(`id:${url}`) : undefined) ??
+      (wp.slug ? byKey.get(`slug:${wp.slug.toLowerCase()}`) : undefined) ??
+      (urlSlug ? byKey.get(`slug:${urlSlug}`) : undefined) ??
+      (titleKey ? byKey.get(`title:${titleKey}`) : undefined)
+    );
+  };
+
+  // ── Step D: merge — tag each live Wix post. ──
+  const posts: BlogPostOut[] = wixPosts.map((wp) => {
+    const row = matchRow(wp);
+    const url =
+      blogWixPostUrl(wp) ?? (wp.slug ? `https://www.apire.io/post/${wp.slug}` : '');
+    return {
+      wixPostId: wp.id,
+      title: wp.title ?? '(Untitled)',
+      slug: wp.slug ?? '',
+      url,
+      firstPublishedDate: wp.firstPublishedDate ?? null,
+      lastPublishedDate: wp.lastPublishedDate ?? null,
+      source: row ? 'hailmery' : 'pre_existing',
+      draftId: row?.draft_id ?? null,
+      campaignName: row?.campaign_name ?? null,
+      guardianScore: row
+        ? blogGuardianScore(row.guardian_breakdown, row.payload_guardian_score)
+        : null,
+      hailmeryPublishedAt: row?.published_at ?? null,
+    };
+  });
+
+  // Newest first by first-published date.
+  posts.sort((a, b) => {
+    const ta = a.firstPublishedDate ? new Date(a.firstPublishedDate).getTime() : 0;
+    const tb = b.firstPublishedDate ? new Date(b.firstPublishedDate).getTime() : 0;
+    return tb - ta;
+  });
+
+  // ── Step E: stats. ──
+  const hailmeryPosts = posts.filter((p) => p.source === 'hailmery');
+  const scores = hailmeryPosts
+    .map((p) => p.guardianScore)
+    .filter((s): s is number => s !== null);
+  const avgGuardianScore = scores.length
+    ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
+    : null;
+
+  return c.json({
+    wixConnected: true,
+    posts,
+    stats: {
+      total: posts.length,
+      hailmery: hailmeryPosts.length,
+      preExisting: posts.length - hailmeryPosts.length,
+      avgGuardianScore,
+    },
+  });
+});

@@ -8,6 +8,7 @@ import CalendarPage from '@/pages/CalendarPage'
 import Campaigns from '@/pages/Campaigns'
 import SettingsPage from '@/pages/SettingsPage'
 import Analytics from '@/pages/Analytics'
+import BlogManagement from '@/pages/BlogManagement'
 
 export default function App() {
   const { user, isLoading } = useAuth()
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/campaigns" element={<Campaigns />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/blog" element={<BlogManagement />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/queue" replace />} />
         </Route>

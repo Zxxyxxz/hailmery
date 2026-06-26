@@ -7,6 +7,7 @@ import { api } from './api'
 import { useTenant } from './tenant-context'
 import type {
   AnalyticsSummary,
+  BlogPostsResponse,
   BufferImportInput,
   BufferImportResult,
   Campaign,
@@ -538,6 +539,26 @@ export function useConnections() {
         '/api/connections',
       )
       return res.data.connections
+    },
+  })
+}
+
+// ── Blog management ─────────────────────────────────────────────────
+
+/**
+ * Every published post on the tenant's Wix blog, tagged hailmery vs pre-existing.
+ * The Wix Blog API is slow (full server-side pagination), so cache for 5 min and
+ * don't hammer it. Returns wixConnected:false for tenants with no Wix blog.
+ */
+export function useBlogPosts() {
+  const { currentId } = useTenant()
+  return useQuery({
+    queryKey: ['blog-posts', currentId],
+    enabled: !!currentId,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const res = await api.get<BlogPostsResponse>('/api/blog/posts')
+      return res.data
     },
   })
 }

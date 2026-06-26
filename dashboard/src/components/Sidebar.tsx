@@ -4,6 +4,7 @@ import {
   Calendar as CalendarIcon,
   Megaphone,
   BarChart3,
+  FileText,
   Settings as SettingsIcon,
   ChevronsUpDown,
   Check,
@@ -19,6 +20,7 @@ const NAV = [
   { to: '/calendar', label: 'Calendar', icon: CalendarIcon },
   { to: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/blog', label: 'Blog', icon: FileText },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
