@@ -14,6 +14,8 @@ drizzle/meta/_journal.json.bak
 # V0 artifacts not for git
 screenshot-apire.js
 apire-screenshots/
+screenshots/
+out/_assets/
 
 # Source corpus binaries (large .docx/.pdf — extracted text only is in markdown files)
 corpus/apire/*.docx

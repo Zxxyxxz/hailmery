@@ -368,7 +368,7 @@ Add the publishing surface + the integration gauntlet. Baran runs his weekly mar
 
 **OSM in V1**: brought on mid-V1 once Baran confirms OSM's stack and publishing surface — this forces per-tenant config to be real, not aspirational. Pending questions for Baran are tracked under the V0/V1 onboarding task.
 
-#### V1 progress checklist
+#### V1 progress checklist — ✅ COMPLETE (as of 2026-06-23, HEAD `218112b`)
 
 Done (built and verified during the V1 push):
 - [x] Multi-tenant schema with RLS
@@ -384,10 +384,28 @@ Done (built and verified during the V1 push):
 - [x] OSM corpus ingested
 - [x] Manual test end-to-end confirmed
 
-Remaining to close V1:
-- [ ] **Chunk 7** — Analytics ingestion + learning loop
-- [x] **Chunk 8** — Document upload pipeline (R2)
-- [ ] **Chunk 9** — Deploy to Cloudflare
+The "Chunk" sequence that closed V1:
+- [x] **Chunk 7** — Analytics ingestion + performance scoring + golden-example learning loop (commit `10e2fe2`)
+- [x] **Chunk 8** — Document upload pipeline (R2 extract → chunk → embed → reingest → delete) (commit `7692b61`)
+- [x] **Chunk 9** — Deploy to Cloudflare. **The Worker is deployed and live** at
+  `hailmery-api.bezekyigit0.workers.dev` (serving real tenant data). **Auth was since closed in
+  session 14** — JWT Google-login gate enforces `X-Tenant-ID ∈ allowedTenants` (the unauthenticated
+  tenant-fleet leak is fixed). ⚠️ One deploy item remains open/unconfirmed: whether prod
+  `DATABASE_URL` uses the `hailmery_app` (NOBYPASSRLS) role — without it, RLS is silently off. See
+  `CLAUDE.md` and `CURRENT_SITUATION.md` (2026-06-30 update banner).
+
+#### V1.5 — built *past* V1 (sessions 8–13, not in the original plan)
+
+These landed after V1 closed and are best understood as early-V2 intelligence/connection work pulled
+forward (all built + wired; see `CURRENT_SITUATION.md` §2 timeline):
+
+- [x] **Recommendations engine** — nightly Sonnet job → 5 ranked weekly action cards wired to one-click "Generate now" (commit `523c915`)
+- [x] **Multi-guardian system** — single guardian → 5 validators (`platform_rules` blocking + `factual`/`brand_voice`/`audience_fit`/`performance_prediction` advisory) with graceful degradation (commit `d6b6178`)
+- [x] **Google OAuth + GSC** — one-grant OAuth, HMAC state, real token refresh, keyword sync, SEO recommendations (commit `3146cd5`)
+- [x] **Platform connect wizard** — live connection probes, API-key flows, SendGrid domain-auth self-serve (commits `5c94cac`, `288613a`)
+- [x] **Send-time email recipient resolution** — HubSpot→SendGrid fallback, 500-cap, preview endpoint (commit `c46e324`)
+- [x] **Historical Buffer import** — real LinkedIn back-catalogue → measured drafts → golden seeding (commit `f0d27e1`) *(this was V2 item #4 below)*
+- [x] **Campaign edit + auto-trigger generation** — `PATCH /api/campaigns/:id`; create now triggers first-batch gen (commit `218112b`)
 
 ### V2 — 2–3 months, native social + intelligence
 As each OAuth review clears, swap Buffer → native adapter via `plan_preferences.publish_via` flag per channel. Expected order: LinkedIn → X → Meta → TikTok → Pinterest.
@@ -400,20 +418,25 @@ As each OAuth review clears, swap Buffer → native adapter via `plan_preference
 - **Multi-site UI**: tenant switcher in top nav + sub-site switcher. Per-tenant config import wizard for additional Kuzey sites if Baran wants them onboarded.
 - **Approval queue at scale**: silently introduce bulk-approve + auto-approve-high-confidence thresholds (Guardian score >0.9 → optional auto-approve per channel).
 
-#### V2 additions (decided during the V1 build)
+#### V2 additions (decided during the V1 build) — status as of 2026-06-23
 
-Features surfaced while building V1 that were deliberately deferred to V2 rather than scope-creep the internship deliverable:
+Features surfaced while building V1 that were deferred to V2. Several were pulled forward and built
+during the V1.5 sessions (8–13); status is marked per item:
 
-1. **Cancel button for running jobs** — give long-running generation and intelligence-brief jobs a user-triggered cancel. Wire a cancellation signal through the Cloudflare Workflow so an in-flight run can be aborted cleanly from the dashboard instead of waiting it out.
-2. **Generate More with channel/topic selection** — the current "Generate More" fires blind into the default channel. V2 adds an explicit channel + topic picker so the operator chooses what gets generated instead of accepting the default-channel fallback.
-3. **LinkedIn Member Post Analytics API** — pull historical post-performance data directly from LinkedIn via the Member Post Analytics API rather than relying solely on Buffer/adapter `fetchMetrics()`. Feeds `content_metrics` with first-party engagement history.
-4. **Historical Buffer post import** — ingest the 102 existing APIRE LinkedIn posts (with their engagement metrics) as learning data. Seeds the learning loop with real performance history instead of starting from zero. Top performers become `golden_example` candidates.
-5. **Performance-weighted topic selection** — once 30+ days of published content exists, weight the Strategist's topic generation toward angles that historically outperformed. Closes the gap between "metrics ingested" (V1) and "metrics actually steering generation."
-6. **Competitor content gap analysis** — scan competitor content libraries to find topics the tenant hasn't covered, surfacing uncovered angles as campaign suggestions. Uses the `document_type='competitor'` corpus plus live scans.
-7. **X / TikTok / Pinterest native adapter swap** — extend the Buffer → native swap (already planned LinkedIn → X → Meta) to X, TikTok, and Pinterest as each OAuth review clears, via the `plan_preferences.publish_via` per-channel flag.
-8. **Google Ads write access** — A/B copy generation, negative-keyword suggestions, and budget-reallocation recommendations (still human-approved, no autonomous spend). Gated on developer-token approval. Expands the V1 read-only `google-ads.ts` adapter.
-9. **Image attachment in Buffer posts** — attach generated images to Buffer posts, which requires a public R2 CDN URL. The CDN URL lands with the Chunk 9 Cloudflare deploy; the Buffer attachment wiring is done in V2 on top of it.
-10. **OSM full content pipeline** — campaigns, generation, and publishing for the OSM tenant (beyond the V1 corpus ingest) once Baran confirms OSM's brand voice. Makes OSM a fully-operated tenant, not just an ingested one.
+1. ⛔ **Cancel button for running jobs** — *not built.* Long-running generation/intelligence/recommendations jobs still run to completion; no cancellation signal is threaded through the Workflow.
+2. ⛔ **Generate More with channel/topic selection** — *not built.* "Generate More" still fires into the default channel; no explicit channel + topic picker yet.
+3. ⛔ **LinkedIn Member Post Analytics API** — *not built.* First-party windowed analytics still missing; Buffer `fetchMetrics()` returns **cumulative-only** data (no per-window breakdown). The historical-import path (#4) partially covers the "seed with real history" goal.
+4. ✅ **Historical Buffer post import** — **DONE (session 9, commit `f0d27e1`).** Real APIRE/OSM LinkedIn back-catalogue imported as measured `content_drafts`; the full catalogue is scored and top performers promoted to `golden_example` candidates. (`src/jobs/import-buffer.ts` + `POST /api/import/buffer-history`.)
+5. 🟡 **Performance-weighted topic selection** — *partial.* The learning loop exists end-to-end (golden examples bias generation via RAG; the recommendations engine surfaces winners and feeds "Generate now"), but generation does **not** yet explicitly weight topic selection by historical performance. The fuel is also thin (real per-draft metrics only from Buffer/SendGrid).
+6. ⛔ **Competitor content gap analysis** — *not built.* (The recommendations engine has a `content_gap` type, but it covers queue/coverage gaps, not competitor-corpus scanning.)
+7. ⛔ **X / TikTok / Pinterest native adapter swap** — *not built.* All social still publishes via Buffer; no native adapters yet.
+8. ⛔ **Google Ads write access** — *not built.* No `google-ads.ts` adapter exists yet (read-only or write).
+9. ✅ **Image attachment in Buffer posts** — **DONE (session 8, commit `9f5a0e4`).** Generated images attach to Buffer posts via the R2 proxy URL (`assets.imageUrl`). ⚠️ Note the related §image-gate bug: images are only produced via the *publish-time* backfill for linkedin/instagram/x — the *generation* Workflow never makes them as configured (see `CURRENT_SITUATION.md` §7.2).
+10. ⛔ **OSM full content pipeline** — *not built.* OSM corpus + brand voice are ingested, but the tenant is only lightly operated (a sample post). Making OSM fully operated remains the headline open item.
+
+**Also built early (not in this original list):** the recommendations engine, multi-guardian system,
+Google OAuth + GSC, the platform-connect wizard, send-time email recipient resolution, and campaign
+edit + auto-trigger generation — see the V1.5 checklist above and `CURRENT_SITUATION.md` §2.
 
 ### V3 — 3–6 months, LeadOrch integration + public SaaS
 The product becomes irreplaceable when the integration ships.
